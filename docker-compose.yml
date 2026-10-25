@@ -1,0 +1,15 @@
+services:
+  factcheck-radar:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: factcheck-radar
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - NEBIUS_BASE_URL=${NEBIUS_BASE_URL:-https://api.tokenfactory.nebius.com/v1}
+      - MODEL_FAST=${MODEL_FAST:-nvidia/Nemotron-3-Nano-30B-A3B}
+      - MODEL_REASONING=${MODEL_REASONING:-nvidia/Nemotron-3-Ultra-550b-a55b}
+    restart: unless-stopped
