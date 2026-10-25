@@ -3,6 +3,7 @@
 ## Project Name: FactCheck Radar
 **Track**: Best Apps & Agents Track  
 **Elevator Pitch**: Autonomous multi-stage fact-checking agent combining fast Nemotron Nano 30B extraction with deep Nemotron Ultra 550B reasoning over live Tavily web evidence.  
+**Demo Video (YouTube)**: [https://www.youtube.com/watch?v=s2DIYEr02RM](https://www.youtube.com/watch?v=s2DIYEr02RM)  
 **GitHub Repository**: [https://github.com/amansheikh-techie/FactCheck_Radar](https://github.com/amansheikh-techie/FactCheck_Radar)
 
 ---

@@ -11,12 +11,15 @@ Built for the **Nebius x NVIDIA Global AI Hackathon (Devpost) — Best Apps & Ag
 [![NVIDIA Nemotron](https://img.shields.io/badge/LLM-NVIDIA%20Nemotron-76B900.svg)](https://www.nvidia.com/)
 [![Nebius Token Factory](https://img.shields.io/badge/Inference-Nebius%20Token%20Factory-6842FF.svg)](https://tokenfactory.nebius.com/)
 [![Tavily Search](https://img.shields.io/badge/Search-Tavily%20AI-FF6B6B.svg)](https://tavily.com/)
+[![Demo Video](https://img.shields.io/badge/YouTube-Demo%20Video-red?logo=youtube)](https://www.youtube.com/watch?v=s2DIYEr02RM)
 
 ---
 
 ## 🎯 Overview
 
 Misinformation spreads faster than truth. **FactCheck Radar** is an autonomous multi-stage intelligence agent that takes any claim, viral headline, or news article URL, systematically deconstructs it into atomic checkable assertions, gathers authoritative cross-web evidence, evaluates conflicting viewpoints, and delivers nuanced verdicts with calibrated confidence scores and verifiable citations.
+
+📺 **[Watch 1-Minute Live Demo Video on YouTube](https://www.youtube.com/watch?v=s2DIYEr02RM)**
 
 ### ✨ Highlights
 - **NVIDIA Nemotron Synergy**: Utilizes **Nemotron Fast (`nvidia/Nemotron-3-Nano-30B-A3B`)** for high-speed claim extraction, query generation, and source stance assessment, paired with **Nemotron Reasoning (`nvidia/Nemotron-3-Ultra-550b-a55b`)** for deep synthesis, evidence weighting, and verdict generation.
