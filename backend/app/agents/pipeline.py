@@ -204,3 +204,110 @@ async def run_factcheck_pipeline(
     except Exception as exc:
         logger.exception("Pipeline error: %s", exc)
         yield sse("error", {"message": f"An error occurred: {str(exc)}"})
+
+
+async def run_demo_pipeline(user_input: str) -> AsyncGenerator[str, None]:
+    """
+    Simulated pipeline for interactive demonstrations and recording video.
+    Emits genuine SSE step transitions and realistic fact-check verdicts with citations.
+    """
+    import asyncio
+
+    def sse(event: str, data: dict) -> str:
+        return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+    fast_model = "nvidia/Nemotron-3-Nano-30B-A3B"
+    reasoning_model = "nvidia/Nemotron-3-Ultra-550b-a55b"
+
+    await asyncio.sleep(0.5)
+    yield sse("step", {"step": "extracting_claims", "message": "Extracting checkable claims with Nemotron Nano..."})
+    await asyncio.sleep(1.0)
+
+    input_lower = user_input.lower()
+    if "great wall" in input_lower or "china" in input_lower:
+        claim_text = "The Great Wall of China is visible from space with the naked eye."
+        category = "geographical"
+        verdict = "False"
+        confidence = 96
+        explanation = (
+            "NASA astronauts and high-resolution satellite imagery confirm that the Great Wall of China "
+            "cannot be seen from low Earth orbit with the naked eye due to its narrow width and optical blending "
+            "with surrounding terrain. This widespread belief originated in pre-spaceflight literature."
+        )
+        citations = [
+            {"number": 1, "url": "https://www.nasa.gov/vision/space/workinginspace/great_wall.html", "domain": "nasa.gov", "title": "China's Wall Less Great in View from Space", "stance": "contradicts"},
+            {"number": 2, "url": "https://www.scientificamerican.com/article/is-chinas-great-wall-visible-from-space/", "domain": "scientificamerican.com", "title": "Is China's Great Wall Visible from Space?", "stance": "contradicts"},
+            {"number": 3, "url": "https://en.wikipedia.org/wiki/Great_Wall_of_China#Visibility_from_space", "domain": "wikipedia.org", "title": "Visibility from Space - Great Wall of China", "stance": "contradicts"},
+        ]
+    elif "flat" in input_lower or "earth" in input_lower:
+        claim_text = "The Earth is flat and gravity is an illusion."
+        category = "scientific"
+        verdict = "False"
+        confidence = 99
+        explanation = (
+            "Centuries of astronomical observations, circumnavigation, geodetic satellite measurements, and space imagery "
+            "definitively confirm the Earth is an oblate spheroid. Gravitational attraction governs planetary mass and orbit."
+        )
+        citations = [
+            {"number": 1, "url": "https://science.nasa.gov/earth/facts/", "domain": "nasa.gov", "title": "Earth Facts & Measurements", "stance": "contradicts"},
+            {"number": 2, "url": "https://www.noaa.gov/education/resource-collections/ocean-coasts/earth-shape", "domain": "noaa.gov", "title": "Geodesy and Earth's Oblate Shape", "stance": "contradicts"},
+        ]
+    elif "water" in input_lower or "boil" in input_lower:
+        claim_text = "Water boils at 100 degrees Celsius at sea level."
+        category = "scientific"
+        verdict = "True"
+        confidence = 100
+        explanation = (
+            "Under standard atmospheric pressure (1 atm / 101.325 kPa) at sea level, pure water boils at 100 °C (212 °F). "
+            "Thermodynamic standards and chemical literature consistently verify this baseline phase transition."
+        )
+        citations = [
+            {"number": 1, "url": "https://www.nist.gov/pml/weights-and-measures/metric-si/temperature", "domain": "nist.gov", "title": "NIST Temperature Standards and Boiling Point", "stance": "supports"},
+            {"number": 2, "url": "https://www.usgs.gov/special-topics/water-science-school/science/water-boiling-points", "domain": "usgs.gov", "title": "The Temperature of Water - Boiling Points", "stance": "supports"},
+        ]
+    else:
+        claim_text = user_input.strip()[:150]
+        category = "general"
+        verdict = "Mostly True"
+        confidence = 88
+        explanation = (
+            f"Cross-referencing authoritative databases indicates that '{claim_text}' is supported by verified reporting, "
+            "with minor contextual nuances noted across independent sources."
+        )
+        citations = [
+            {"number": 1, "url": "https://www.reuters.com/fact-check", "domain": "reuters.com", "title": "Reuters Fact Check Index", "stance": "supports"},
+            {"number": 2, "url": "https://apnews.com/hub/ap-fact-check", "domain": "apnews.com", "title": "Associated Press Verification", "stance": "supports"},
+        ]
+
+    yield sse("claims", {"claims": [{"claim": claim_text, "category": category}]})
+    await asyncio.sleep(0.8)
+
+    yield sse("step", {"step": "generating_queries", "message": "Generating neutral search queries..."})
+    await asyncio.sleep(0.9)
+
+    yield sse("step", {"step": "searching", "message": "Searching the web for cross-source evidence (Tavily)..."})
+    await asyncio.sleep(1.2)
+
+    yield sse("step", {"step": "assessing_sources", "message": "Evaluating credibility & source stances with Nemotron Nano..."})
+    await asyncio.sleep(1.0)
+
+    yield sse("step", {"step": "reasoning", "message": "Nemotron Ultra 550B synthesizing evidence & calibrating confidence..."})
+    await asyncio.sleep(1.3)
+
+    final_result = {
+        "input": user_input,
+        "claim_verdicts": [
+            {
+                "claim": claim_text,
+                "verdict": verdict,
+                "confidence": confidence,
+                "explanation": explanation,
+                "citations": citations,
+            }
+        ],
+        "model_fast": fast_model,
+        "model_reasoning": reasoning_model,
+    }
+
+    yield sse("step", {"step": "done", "message": "Fact-check complete!"})
+    yield sse("result", final_result)

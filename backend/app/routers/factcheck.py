@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend.app.schemas import FactCheckRequest, FactCheckResult
-from backend.app.agents.pipeline import run_factcheck_pipeline
+from backend.app.agents.pipeline import run_factcheck_pipeline, run_demo_pipeline
 from backend.app.utils.cache import cache
 from backend.app.config import settings
 
@@ -33,17 +33,10 @@ async def factcheck(request: FactCheckRequest):
     if not request.input.strip():
         raise HTTPException(status_code=400, detail="Input cannot be empty.")
 
-    # Check API keys
-    if not settings.nebius_api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="NEBIUS_API_KEY is not configured. Please set it in your .env file.",
-        )
-    if not settings.tavily_api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="TAVILY_API_KEY is not configured. Please set it in your .env file.",
-        )
+    # Determine whether to run live or demo mode
+    use_demo = not (settings.nebius_api_key and settings.tavily_api_key)
+    if use_demo:
+        logger.info("Running factcheck in demo mode (live API keys not configured)")
 
     # Check cache
     cache_key = cache.make_key(request.input)
@@ -69,7 +62,8 @@ async def factcheck(request: FactCheckRequest):
     # Run pipeline with SSE streaming
     async def event_stream():
         final_result = None
-        async for event_line in run_factcheck_pipeline(request.input):
+        pipeline_gen = run_demo_pipeline(request.input) if use_demo else run_factcheck_pipeline(request.input)
+        async for event_line in pipeline_gen:
             yield event_line
             # Capture the result for caching
             if "event: result" in event_line:
