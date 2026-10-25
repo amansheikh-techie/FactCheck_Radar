@@ -43,9 +43,9 @@ def test_claim_extraction_output_schema():
     assert len(output.claims) == 2
     assert output.claims[0].category == "scientific"
 
-    # Empty claims list should fail (min_length=1)
-    with pytest.raises(ValidationError):
-        ClaimExtractionOutput.model_validate({"claims": []})
+    # Empty claims list is valid (for non-factual or unverifiable queries)
+    empty_output = ClaimExtractionOutput.model_validate({"claims": []})
+    assert len(empty_output.claims) == 0
 
     # More than 3 claims should fail (max_length=3)
     with pytest.raises(ValidationError):

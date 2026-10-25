@@ -17,6 +17,18 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
+def _clean_json_str(text: str) -> str:
+    """Strip markdown code fence blocks if returned by the LLM."""
+    cleaned = text.strip()
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[7:]
+    elif cleaned.startswith("```"):
+        cleaned = cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    return cleaned.strip()
+
+
 class NebiusClient:
     """Wrapper around the OpenAI SDK pointing at Nebius Token Factory."""
 
@@ -148,11 +160,11 @@ class NebiusClient:
             response_format={"type": "json_object"},
         )
 
-        raw = response.choices[0].message.content
+        raw = response.choices[0].message.content or ""
         logger.debug("Raw LLM response (%s): %.300s", model, raw)
 
         try:
-            parsed = json.loads(raw)
+            parsed = json.loads(_clean_json_str(raw))
             return output_schema.model_validate(parsed)
         except (json.JSONDecodeError, ValidationError) as first_err:
             logger.warning(
@@ -165,7 +177,7 @@ class NebiusClient:
                 f"Error: {first_err}\n"
                 f"Original output: {raw[:1000]}\n\n"
                 f"Please output ONLY valid JSON matching the required schema. "
-                f"Do not include any text outside the JSON object."
+                f"Do not include markdown code fences or any text outside the JSON object."
             )
             messages_retry = messages + [
                 {"role": "assistant", "content": raw},
@@ -181,8 +193,8 @@ class NebiusClient:
                 response_format={"type": "json_object"},
             )
 
-            raw2 = response2.choices[0].message.content
-            parsed2 = json.loads(raw2)
+            raw2 = response2.choices[0].message.content or ""
+            parsed2 = json.loads(_clean_json_str(raw2))
             return output_schema.model_validate(parsed2)
 
 

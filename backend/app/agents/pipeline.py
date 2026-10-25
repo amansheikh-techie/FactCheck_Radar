@@ -74,6 +74,25 @@ async def run_factcheck_pipeline(
         yield sse("claims", {"claims": [c.model_dump() for c in claims]})
         logger.info("Extracted %d claims", len(claims))
 
+        if not claims:
+            yield sse("step", {"step": "done", "message": "No checkable claims detected."})
+            fallback_result = FactCheckResult(
+                input=user_input,
+                claim_verdicts=[
+                    ClaimVerdict(
+                        claim=user_input[:200],
+                        verdict="Unverifiable",
+                        confidence=0,
+                        explanation="No specific, checkable factual claims could be extracted from the input text.",
+                        citations=[],
+                    )
+                ],
+                model_fast=fast_model,
+                model_reasoning=reasoning_model,
+            )
+            yield sse("result", fallback_result.model_dump())
+            return
+
         # ── Step 2: Query generation ──────────────────────
         yield sse("step", {"step": "generating_queries", "message": "Generating search queries..."})
 

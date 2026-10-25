@@ -35,8 +35,8 @@ class ExtractedClaim(BaseModel):
 class ClaimExtractionOutput(BaseModel):
     """Output of the claim extraction step."""
     claims: list[ExtractedClaim] = Field(
-        ..., min_length=1, max_length=3,
-        description="Up to 3 distinct checkable claims",
+        default_factory=list, max_length=3,
+        description="Up to 3 distinct checkable claims (empty if no checkable claims exist)",
     )
 
 

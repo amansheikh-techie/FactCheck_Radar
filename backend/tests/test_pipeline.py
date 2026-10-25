@@ -130,3 +130,42 @@ async def test_run_factcheck_pipeline_mocked():
         result_data = json.loads(result_events[0].split("data: ")[1])
         assert result_data["claim_verdicts"][0]["verdict"] == "True"
         assert result_data["claim_verdicts"][0]["confidence"] == 99
+
+
+@pytest.mark.asyncio
+async def test_pipeline_empty_claims_fallback():
+    """Verify that when no claims can be extracted, pipeline yields a graceful fallback result."""
+    empty_claims = ClaimExtractionOutput(claims=[])
+
+    with patch(
+        "backend.app.agents.pipeline.nebius_client.chat_json",
+        new=AsyncMock(return_value=empty_claims),
+    ):
+        events = []
+        async for line in run_factcheck_pipeline("hello world whatever"):
+            events.append(line)
+
+        result_events = [e for e in events if "event: result" in e]
+        assert len(result_events) == 1
+        result_data = json.loads(result_events[0].split("data: ")[1])
+        assert result_data["claim_verdicts"][0]["verdict"] == "Unverifiable"
+        assert result_data["claim_verdicts"][0]["confidence"] == 0
+
+
+def test_is_safe_url_ssrf_filter():
+    """Verify SSRF protection filters out loopback and private/cloud metadata IPs."""
+    from backend.app.services.url_extractor import is_safe_url
+
+    # Malicious / internal targets
+    assert not is_safe_url("http://localhost/secret")
+    assert not is_safe_url("http://127.0.0.1:8000/api")
+    assert not is_safe_url("http://169.254.169.254/latest/meta-data")
+    assert not is_safe_url("http://10.0.0.1/admin")
+    assert not is_safe_url("http://192.168.1.1/router")
+    assert not is_safe_url("ftp://example.com/file")
+    assert not is_safe_url("file:///etc/passwd")
+
+    # Safe external targets
+    assert is_safe_url("https://www.nature.com/articles/s41586-024-00000")
+    assert is_safe_url("https://en.wikipedia.org/wiki/Earth")
+    assert is_safe_url("http://bbc.co.uk/news")
