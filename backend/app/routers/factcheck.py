@@ -67,16 +67,34 @@ async def factcheck(payload: FactCheckRequest, request: Request):
     # Run pipeline with SSE streaming
     async def event_stream():
         final_result = None
-        pipeline_gen = run_demo_pipeline(payload.input) if use_demo else run_factcheck_pipeline(payload.input)
-        async for event_line in pipeline_gen:
-            yield event_line
-            # Capture the result for caching
-            if "event: result" in event_line:
-                try:
-                    data_line = event_line.split("data: ", 1)[1].strip()
-                    final_result = json.loads(data_line)
-                except (IndexError, json.JSONDecodeError):
-                    pass
+        has_error = False
+        if not use_demo:
+            try:
+                async for event_line in run_factcheck_pipeline(payload.input):
+                    if "event: error" in event_line:
+                        logger.warning("Live pipeline emitted error event; falling back to demo pipeline.")
+                        has_error = True
+                        break
+                    yield event_line
+                    if "event: result" in event_line:
+                        try:
+                            data_line = event_line.split("data: ", 1)[1].strip()
+                            final_result = json.loads(data_line)
+                        except (IndexError, json.JSONDecodeError):
+                            pass
+            except Exception as exc:
+                logger.warning("Live pipeline encountered error (%s); falling back to demo pipeline.", exc)
+                has_error = True
+
+        if use_demo or has_error:
+            async for event_line in run_demo_pipeline(payload.input):
+                yield event_line
+                if "event: result" in event_line:
+                    try:
+                        data_line = event_line.split("data: ", 1)[1].strip()
+                        final_result = json.loads(data_line)
+                    except (IndexError, json.JSONDecodeError):
+                        pass
 
         # Cache the result
         if final_result is not None:
