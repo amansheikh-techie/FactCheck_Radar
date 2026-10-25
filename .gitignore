@@ -28,5 +28,9 @@ frontend/dist/
 .DS_Store
 Thumbs.db
 
-# Media
+# Media & Artifacts
 *.mp4
+*.webp
+*.log
+*.zip
+*.tar.gz

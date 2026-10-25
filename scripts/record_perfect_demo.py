@@ -11,7 +11,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 
 def main():
-    out_path = r"g:\nvidia_proj\demo_video.mp4"
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out_path = os.path.join(repo_root, "demo_video.mp4")
     width, height = 1920, 1080
     fps = 15
 
