@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -44,7 +45,9 @@ class TavilyService:
         """Run a Tavily search and return parsed results."""
         try:
             client = self._get_client()
-            response = client.search(
+            # Run blocking Tavily SDK call in a thread
+            response = await asyncio.to_thread(
+                client.search,
                 query=query,
                 max_results=max_results,
                 search_depth="advanced",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import TypeVar
@@ -10,7 +11,6 @@ from openai import OpenAI, APIError, APITimeoutError, RateLimitError
 from pydantic import BaseModel, ValidationError
 
 from backend.app.config import settings
-from backend.app.utils.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class NebiusClient:
 
         self._client = OpenAI(
             base_url=settings.nebius_base_url,
-            api_key=settings.nebius_api_key,
+            api_key=settings.nebius_api_key or "placeholder",
             timeout=60.0,
         )
         self._available_models: set[str] = set()
@@ -38,7 +38,8 @@ class NebiusClient:
     async def discover_models(self) -> None:
         """Call /v1/models to discover which Nemotron models are available."""
         try:
-            response = self._client.models.list()
+            # Run sync SDK call in thread to avoid blocking the event loop
+            response = await asyncio.to_thread(self._client.models.list)
             self._available_models = {m.id for m in response.data}
             logger.info("Available models on Token Factory: %s", self._available_models)
         except Exception as exc:
@@ -91,19 +92,32 @@ class NebiusClient:
     ) -> T:
         """
         Send a chat completion request expecting JSON output.
-        Parse with pydantic. Retry once on malformed output.
+        Parse with pydantic. Retry up to 2x on API errors with backoff.
+        On malformed JSON/schema, do one in-band fix-prompt retry.
         """
-        return await retry_with_backoff(
-            self._chat_json_inner,
-            model=model,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            output_schema=output_schema,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            max_retries=2,
-            retry_on=(APIError, APITimeoutError, RateLimitError),
-        )
+        last_exc: Exception | None = None
+        for attempt in range(3):  # up to 3 attempts
+            try:
+                return await self._chat_json_inner(
+                    model=model,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    output_schema=output_schema,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            except (APIError, APITimeoutError, RateLimitError) as exc:
+                last_exc = exc
+                if attempt < 2:
+                    delay = min(1.0 * (2 ** attempt), 10.0)
+                    logger.warning(
+                        "API error attempt %d/3: %s — retrying in %.1fs",
+                        attempt + 1, exc, delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error("All 3 API attempts failed: %s", exc)
+        raise last_exc  # type: ignore[misc]
 
     async def _chat_json_inner(
         self,
@@ -114,13 +128,19 @@ class NebiusClient:
         temperature: float,
         max_tokens: int,
     ) -> T:
-        """Inner call: completion → parse → validate → optional JSON-fix retry."""
+        """Inner call: completion → parse → validate → optional JSON-fix retry.
+        
+        Uses asyncio.to_thread to avoid blocking the event loop with
+        the synchronous OpenAI SDK.
+        """
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
 
-        response = self._client.chat.completions.create(
+        # Offload blocking SDK call to a thread
+        response = await asyncio.to_thread(
+            self._client.chat.completions.create,
             model=model,
             messages=messages,
             temperature=temperature,
@@ -129,7 +149,7 @@ class NebiusClient:
         )
 
         raw = response.choices[0].message.content
-        logger.debug("Raw LLM response (%s): %s", model, raw[:500])
+        logger.debug("Raw LLM response (%s): %.300s", model, raw)
 
         try:
             parsed = json.loads(raw)
@@ -139,7 +159,7 @@ class NebiusClient:
                 "JSON parse/validation failed on first attempt: %s — retrying with fix prompt",
                 first_err,
             )
-            # One retry with the error context
+            # One in-band retry with the error context appended
             fix_prompt = (
                 f"Your previous JSON output was invalid.\n"
                 f"Error: {first_err}\n"
@@ -147,12 +167,15 @@ class NebiusClient:
                 f"Please output ONLY valid JSON matching the required schema. "
                 f"Do not include any text outside the JSON object."
             )
-            messages.append({"role": "assistant", "content": raw})
-            messages.append({"role": "user", "content": fix_prompt})
+            messages_retry = messages + [
+                {"role": "assistant", "content": raw},
+                {"role": "user", "content": fix_prompt},
+            ]
 
-            response2 = self._client.chat.completions.create(
+            response2 = await asyncio.to_thread(
+                self._client.chat.completions.create,
                 model=model,
-                messages=messages,
+                messages=messages_retry,
                 temperature=0.1,
                 max_tokens=max_tokens,
                 response_format={"type": "json_object"},
