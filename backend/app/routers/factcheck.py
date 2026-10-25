@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from backend.app.schemas import FactCheckRequest, FactCheckResult
 from backend.app.agents.pipeline import run_factcheck_pipeline, run_demo_pipeline
 from backend.app.utils.cache import cache
+from backend.app.utils.rate_limit import rate_limiter
 from backend.app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -18,19 +19,23 @@ router = APIRouter(prefix="/api", tags=["factcheck"])
 
 
 @router.post("/factcheck")
-async def factcheck(request: FactCheckRequest):
+async def factcheck(payload: FactCheckRequest, request: Request):
     """
     Run the fact-check pipeline on the given input.
     Returns a Server-Sent Events stream with progress updates and the final result.
+    Enforces per-IP rate limiting and input length constraints.
     """
+    # Enforce rate limit (10 req/min per IP, proxy-aware)
+    rate_limiter.check(request)
+
     # Validate input length
-    if len(request.input) > settings.max_input_length:
+    if len(payload.input) > settings.max_input_length:
         raise HTTPException(
             status_code=400,
             detail=f"Input too long. Maximum {settings.max_input_length} characters.",
         )
 
-    if not request.input.strip():
+    if not payload.input.strip():
         raise HTTPException(status_code=400, detail="Input cannot be empty.")
 
     # Determine whether to run live or demo mode
@@ -39,7 +44,7 @@ async def factcheck(request: FactCheckRequest):
         logger.info("Running factcheck in demo mode (live API keys not configured)")
 
     # Check cache
-    cache_key = cache.make_key(request.input)
+    cache_key = cache.make_key(payload.input)
     cached_result = cache.get(cache_key)
 
     if cached_result is not None:
@@ -62,7 +67,7 @@ async def factcheck(request: FactCheckRequest):
     # Run pipeline with SSE streaming
     async def event_stream():
         final_result = None
-        pipeline_gen = run_demo_pipeline(request.input) if use_demo else run_factcheck_pipeline(request.input)
+        pipeline_gen = run_demo_pipeline(payload.input) if use_demo else run_factcheck_pipeline(payload.input)
         async for event_line in pipeline_gen:
             yield event_line
             # Capture the result for caching

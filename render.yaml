@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: factcheck-radar
+    runtime: docker
+    plan: starter
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: NEBIUS_BASE_URL
+        value: https://api.tokenfactory.nebius.com/v1
+      - key: NEBIUS_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: MODEL_FAST
+        value: nvidia/Nemotron-3-Nano-30B-A3B
+      - key: MODEL_REASONING
+        value: nvidia/Nemotron-3-Ultra-550b-a55b
+      - key: ALLOWED_ORIGINS
+        sync: false

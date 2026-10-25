@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     max_input_length: int = Field(default=5000, description="Max input length in chars")
     max_cache_entries: int = Field(default=100, description="Max cache entries")
 
+    # Networking & Security
+    allowed_origins: str = Field(
+        default="http://localhost:8000,http://127.0.0.1:8000",
+        description="Comma-separated allowed CORS origins (default same-origin local)",
+    )
+    port: int = Field(default=8000, description="Server port")
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 

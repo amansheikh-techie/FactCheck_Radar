@@ -72,15 +72,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow frontend dev server and production origins
+# CORS — configurable allowed origins (defaults to same-origin)
+configured_origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:8000",  # Production (same origin)
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-    ],
+    allow_origins=configured_origins or ["http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -90,10 +87,11 @@ app.add_middleware(
 app.include_router(factcheck_router)
 
 
-# Health check
+# Health check endpoints (/health and /api/health)
+@app.get("/health")
 @app.get("/api/health")
 async def health():
-    """Health check endpoint returning model availability."""
+    """Health check endpoint returning model availability and operational status."""
     return {
         "status": "ok",
         "models": {
