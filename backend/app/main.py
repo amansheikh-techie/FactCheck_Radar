@@ -44,8 +44,16 @@ async def lifespan(app: FastAPI):
     # Discover available models
     logger.info("Discovering models on Nebius Token Factory...")
     await nebius_client.discover_models()
-    logger.info("Fast model: %s", nebius_client.fast_model)
-    logger.info("Reasoning model: %s", nebius_client.reasoning_model)
+    logger.info(
+        "Active Fast Model: %s (Fallback triggered: %s)",
+        nebius_client.fast_model,
+        nebius_client.fast_fallback_triggered,
+    )
+    logger.info(
+        "Active Reasoning Model: %s (Fallback triggered: %s)",
+        nebius_client.reasoning_model,
+        nebius_client.reasoning_fallback_triggered,
+    )
 
     logger.info("=" * 60)
     logger.info("FactCheck Radar ready! http://localhost:8000")

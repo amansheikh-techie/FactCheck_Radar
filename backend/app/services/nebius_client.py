@@ -44,6 +44,8 @@ class NebiusClient:
         self._available_models: set[str] = set()
         self._resolved_fast: str | None = None
         self._resolved_reasoning: str | None = None
+        self.fast_fallback_triggered: bool = False
+        self.reasoning_fallback_triggered: bool = False
 
     # ── Model discovery ──────────────────────────────────
 
@@ -76,6 +78,10 @@ class NebiusClient:
                         "Primary %s model '%s' unavailable — falling back to '%s'",
                         role, primary, model_id,
                     )
+                    if role == "fast":
+                        self.fast_fallback_triggered = True
+                    elif role == "reasoning":
+                        self.reasoning_fallback_triggered = True
                 else:
                     logger.info("Using %s model: %s", role, model_id)
                 return model_id
