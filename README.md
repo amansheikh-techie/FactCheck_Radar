@@ -15,6 +15,11 @@ Built for the **Nebius x NVIDIA Global AI Hackathon (Devpost) — Best Apps & Ag
 
 ---
 
+## 🌐 Live Demo
+Access the hosted deployment: **[<DEMO_URL>](<DEMO_URL>)**
+
+---
+
 ## 🎯 Overview
 
 Misinformation spreads faster than truth. **FactCheck Radar** is an autonomous multi-stage intelligence agent that takes any claim, viral headline, or news article URL, systematically deconstructs it into atomic checkable assertions, gathers authoritative cross-web evidence, evaluates conflicting viewpoints, and delivers nuanced verdicts with calibrated confidence scores and verifiable citations.
@@ -49,6 +54,42 @@ graph TD
 ```
 
 For complete technical specifications, data schemas, and resilience patterns, read [docs/architecture.md](docs/architecture.md).
+
+## 🤖 How We Use NVIDIA Nemotron & Nebius Token Factory
+
+FactCheck Radar pairs NVIDIA's state-of-the-art Nemotron family with Nebius Token Factory's ultra-low-latency inference infrastructure through a tiered multi-agent design:
+
+| Pipeline Stage | Model Employed | Role & Rationale |
+|---|---|---|
+| **Step 1: Claim Extraction** | `nvidia/Nemotron-3-Nano-30B-A3B` | High-throughput parsing to extract atomic, verifiable assertions from messy natural language or articles. |
+| **Step 2: Query Generation** | `nvidia/Nemotron-3-Nano-30B-A3B` | Fast generation of 2-4 targeted, objective search queries with minimal prompt latency. |
+| **Step 4: Stance Assessment** | `nvidia/Nemotron-3-Nano-30B-A3B` | Rapid parallel classification of retrieved evidence as `SUPPORTS`, `REFUTES`, or `NEUTRAL`. |
+| **Step 5: Reasoning & Verdict** | `nvidia/Nemotron-3-Ultra-550b-a55b` | Heavyweight reasoning model synthesizing contradictory evidence, balancing credibility, and calibrating final confidence. |
+
+### Why Tiered Models?
+Using a large reasoning model for every step introduces unnecessary latency and token costs. A lightweight 30B model excels at deterministic extraction and classification, executing in milliseconds. Reserving the ultra 550B model strictly for deep synthesis ensures maximum epistemic rigor where it matters most: reconciling contradictory sources and assigning calibrated confidence scores.
+
+### Nebius Token Factory Acceleration
+- **OpenAI SDK Native**: Nebius Token Factory exposes standard OpenAI-compatible endpoints (`https://api.tokenfactory.nebius.com/v1`), enabling seamless integration with zero custom transport overhead.
+- **Dynamic Startup Probing**: On application boot, the backend probes `/v1/models` to discover active model deployments and configure fallback chains automatically.
+- **Cost & Latency Optimization**: Enterprise-grade NVIDIA GPU hosting on Nebius delivers token generation speeds suitable for real-time interactive user experiences.
+
+---
+
+## 🔍 Tavily AI Search Integration
+
+Evidence collection in **Step 3** leverages the Tavily AI search API, purpose-built for agentic retrieval:
+- **`search_depth="advanced"`**: Executes comprehensive web search retrieving contextual full-text snippets rather than just SEO headlines.
+- **Source Diversity & Deduplication**: Retrieved domains are deduplicated to ensure findings are cross-verified across independent publications rather than circular references.
+- **Async Non-Blocking Execution**: Tavily calls are wrapped in `asyncio.to_thread` to maintain a non-blocking FastAPI asynchronous event loop during network I/O.
+
+---
+
+## ⚠️ Known Limitations & Future Work
+
+- **Paywalled & Dynamic JavaScript Sites**: URL article extraction uses `trafilatura`. Pages strictly gated behind authentication, aggressive anti-bot captchas, or pure client-side JS rendering may yield partial extracts.
+- **Text-Only Scope**: Current verification operates on text claims and text articles. Multimodal verification (deepfake audio/video detection and image forensic metadata) is planned for future iterations.
+- **Breaking News Latency**: For fast-breaking events occurring within minutes, authoritative fact-checking sources may not yet exist in web search indices, prompting an `UNVERIFIED` verdict with recommendations for further reporting.
 
 ---
 
