@@ -30,7 +30,7 @@ load_dotenv()
 
 from backend.app.config import settings
 from backend.app.services.nebius_client import nebius_client
-from backend.app.agents.pipeline import run_factcheck_pipeline, run_demo_pipeline
+from backend.app.agents.pipeline import run_factcheck_pipeline
 
 
 BENCHMARK_CLAIMS = [
@@ -77,18 +77,10 @@ async def run_single_smoke_test(item: dict, index: int):
                 err_obj = json.loads(data_part)
                 print(f"  [!] Live API error: {err_obj.get('message')}")
                 live_error = True
-                break
-
         if live_error or not final_result:
-            print("  [*] Running demo pipeline fallback to verify schema & pipeline integrity...")
-            async for sse_line in run_demo_pipeline(item["input"]):
-                if sse_line.startswith("event: step"):
-                    data_part = sse_line.split("data: ", 1)[1].strip()
-                    step_obj = json.loads(data_part)
-                    print(f"  -> [Demo] Step: {step_obj.get('step')} | {step_obj.get('message')}")
-                elif sse_line.startswith("event: result"):
-                    data_part = sse_line.split("data: ", 1)[1].strip()
-                    final_result = json.loads(data_part)
+            print("  [FAIL] Live API call failed. Smoke test requires live API pass.")
+            print("  [ERROR] Benchmark claim failed: live Nebius or Tavily call did not complete.")
+            return False
 
         duration = time.time() - start_time
 

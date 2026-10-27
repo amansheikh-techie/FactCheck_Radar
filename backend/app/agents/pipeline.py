@@ -294,14 +294,19 @@ async def run_demo_pipeline(user_input: str) -> AsyncGenerator[str, None]:
     yield sse("step", {"step": "reasoning", "message": "Nemotron Ultra 550B synthesizing evidence & calibrating confidence..."})
     await asyncio.sleep(1.3)
 
+    yield sse("step", {"step": "notice", "message": "Live API unavailable - sample result"})
+    await asyncio.sleep(0.5)
+
     final_result = {
         "input": user_input,
+        "is_live": False,
+        "status_notice": "Live API unavailable - sample result",
         "claim_verdicts": [
             {
                 "claim": claim_text,
                 "verdict": verdict,
                 "confidence": confidence,
-                "explanation": explanation,
+                "explanation": f"[Live API unavailable - sample result] {explanation}",
                 "citations": citations,
             }
         ],
@@ -309,5 +314,5 @@ async def run_demo_pipeline(user_input: str) -> AsyncGenerator[str, None]:
         "model_reasoning": reasoning_model,
     }
 
-    yield sse("step", {"step": "done", "message": "Fact-check complete!"})
+    yield sse("step", {"step": "done", "message": "Fact-check complete (Sample Result)"})
     yield sse("result", final_result)

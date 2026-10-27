@@ -87,6 +87,7 @@ async def factcheck(payload: FactCheckRequest, request: Request):
                 has_error = True
 
         if use_demo or has_error:
+            yield f"event: step\ndata: {json.dumps({'step': 'notice', 'message': 'Live API unavailable - sample result'})}\n\n"
             async for event_line in run_demo_pipeline(payload.input):
                 yield event_line
                 if "event: result" in event_line:

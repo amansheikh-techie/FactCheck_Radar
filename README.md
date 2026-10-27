@@ -76,6 +76,22 @@ Using a large reasoning model for every step introduces unnecessary latency and 
 
 ---
 
+## ☁️ Nebius tools and services used
+
+FactCheck Radar relies on the following Nebius AI Cloud tools and services:
+
+1. **Nebius Token Factory (`https://api.tokenfactory.nebius.com/v1`)**:
+   - Primary high-throughput inference engine serving OpenAI-compatible chat completion endpoints.
+   - Dynamic `/v1/models` endpoint probing at application initialization to verify availability of NVIDIA Nemotron models (`nvidia/Nemotron-3-Nano-30B-A3B` and `nvidia/Nemotron-3-Ultra-550b-a55b`).
+   - Powers the multi-stage agentic pipeline across claim decomposition, search query formulation, source stance evaluation, and high-parameter verdict reasoning.
+
+2. **Nebius Serverless Endpoints (Deploy Target)**:
+   - Primary target for containerized, on-demand cloud deployment (`nebius ai endpoint create`).
+   - Runs the unified multi-stage Docker container on Nebius AMD Genoa compute (`cpu-amd-genoa`, preset `4vcpu-16gb`) with automatic SSL termination and persistent public HTTP ingress.
+   - Fully documented in [docs/DEPLOY.md](docs/DEPLOY.md) alongside Render blueprint fallback.
+
+---
+
 ## 🔍 Tavily AI Search Integration
 
 Evidence collection in **Step 3** leverages the Tavily AI search API, purpose-built for agentic retrieval:

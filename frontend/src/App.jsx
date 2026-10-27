@@ -6,7 +6,7 @@ import { ResultCard } from './components/ResultCard';
 import { HowItWorks } from './components/HowItWorks';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ShareButton } from './components/ShareButton';
-import { Radar, AlertCircle, RotateCcw, ShieldCheck, Sparkles } from 'lucide-react';
+import { Radar, AlertCircle, AlertTriangle, RotateCcw, ShieldCheck, Sparkles } from 'lucide-react';
 
 export default function App() {
   const {
@@ -139,6 +139,17 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* Live API Unavailable / Sample Result Warning */}
+            {(!result.is_live || result.status_notice) && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 flex items-start gap-3 animate-fade-in text-sm font-medium">
+                <AlertTriangle className="w-5 h-5 shrink-0 text-amber-500 mt-0.5" />
+                <div>
+                  <div className="font-bold tracking-tight">Live API unavailable - sample result</div>
+                  <div className="text-xs opacity-90 mt-0.5">Live Nebius Token Factory or Tavily API call unavailable. Showing simulated demonstration schema result.</div>
+                </div>
+              </div>
+            )}
 
             {/* Models Used Info Tag */}
             <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100/80 dark:bg-slate-900/50 px-3 py-1.5 rounded-xl border border-slate-200/60 dark:border-slate-800">

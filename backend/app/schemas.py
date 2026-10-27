@@ -114,6 +114,8 @@ class FactCheckResult(BaseModel):
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
+    is_live: bool = Field(default=True, description="True if generated from live Nebius & Tavily APIs")
+    status_notice: str | None = Field(default=None, description="Notice if running with sample/fallback data")
 
 
 # ──────────────────────────────────────────────
