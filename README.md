@@ -16,6 +16,7 @@ Built for the **Nebius x NVIDIA Global AI Hackathon (Devpost) — Best Apps & Ag
 ---
 
 ## 🌐 Live Demo
+
 Access the hosted deployment: **[<DEMO_URL>](<DEMO_URL>)**
 
 ---
@@ -27,6 +28,7 @@ Misinformation spreads faster than truth. **FactCheck Radar** is an autonomous m
 📺 **[Watch 1-Minute Live Demo Video on YouTube](https://www.youtube.com/watch?v=s2DIYEr02RM)**
 
 ### ✨ Highlights
+
 - **NVIDIA Nemotron Synergy**: Utilizes **Nemotron Fast (`nvidia/Nemotron-3-Nano-30B-A3B`)** for high-speed claim extraction, query generation, and source stance assessment, paired with **Nemotron Reasoning (`nvidia/Nemotron-3-Ultra-550b-a55b`)** for deep synthesis, evidence weighting, and verdict generation.
 - **Nebius Token Factory Native**: Directly targets Nebius Token Factory inference with dynamic `/v1/models` discovery, automatic fallback chains, and strict Pydantic JSON schema guarantees.
 - **Real-Time Web Evidence (Tavily AI)**: Conducts targeted web searches, deduplicating results across authoritative domains.
@@ -60,16 +62,18 @@ For complete technical specifications, data schemas, and resilience patterns, re
 FactCheck Radar pairs NVIDIA's state-of-the-art Nemotron family with Nebius Token Factory's ultra-low-latency inference infrastructure through a tiered multi-agent design:
 
 | Pipeline Stage | Model Employed | Role & Rationale |
-|---|---|---|
+| --- | --- | --- |
 | **Step 1: Claim Extraction** | `nvidia/Nemotron-3-Nano-30B-A3B` | High-throughput parsing to extract atomic, verifiable assertions from messy natural language or articles. |
 | **Step 2: Query Generation** | `nvidia/Nemotron-3-Nano-30B-A3B` | Fast generation of 2-4 targeted, objective search queries with minimal prompt latency. |
 | **Step 4: Stance Assessment** | `nvidia/Nemotron-3-Nano-30B-A3B` | Rapid parallel classification of retrieved evidence as `SUPPORTS`, `REFUTES`, or `NEUTRAL`. |
 | **Step 5: Reasoning & Verdict** | `nvidia/Nemotron-3-Ultra-550b-a55b` | Heavyweight reasoning model synthesizing contradictory evidence, balancing credibility, and calibrating final confidence. |
 
 ### Why Tiered Models?
+
 Using a large reasoning model for every step introduces unnecessary latency and token costs. A lightweight 30B model excels at deterministic extraction and classification, executing in milliseconds. Reserving the ultra 550B model strictly for deep synthesis ensures maximum epistemic rigor where it matters most: reconciling contradictory sources and assigning calibrated confidence scores.
 
 ### Nebius Token Factory Acceleration
+
 - **OpenAI SDK Native**: Nebius Token Factory exposes standard OpenAI-compatible endpoints (`https://api.tokenfactory.nebius.com/v1`), enabling seamless integration with zero custom transport overhead.
 - **Dynamic Startup Probing**: On application boot, the backend probes `/v1/models` to discover active model deployments and configure fallback chains automatically.
 - **Cost & Latency Optimization**: Enterprise-grade NVIDIA GPU hosting on Nebius delivers token generation speeds suitable for real-time interactive user experiences.
@@ -95,6 +99,7 @@ FactCheck Radar relies on the following Nebius AI Cloud tools and services:
 ## 🔍 Tavily AI Search Integration
 
 Evidence collection in **Step 3** leverages the Tavily AI search API, purpose-built for agentic retrieval:
+
 - **`search_depth="advanced"`**: Executes comprehensive web search retrieving contextual full-text snippets rather than just SEO headlines.
 - **Source Diversity & Deduplication**: Retrieved domains are deduplicated to ensure findings are cross-verified across independent publications rather than circular references.
 - **Async Non-Blocking Execution**: Tavily calls are wrapped in `asyncio.to_thread` to maintain a non-blocking FastAPI asynchronous event loop during network I/O.
@@ -112,12 +117,14 @@ Evidence collection in **Step 3** leverages the Tavily AI search API, purpose-bu
 ## 🚀 Quickstart
 
 ### Prerequisites
+
 - Python 3.11+
 - Node.js 20+ & npm
 - A **Nebius Token Factory API Key** ([tokenfactory.nebius.com](https://tokenfactory.nebius.com))
 - A **Tavily Search API Key** ([tavily.com](https://tavily.com))
 
 ### 1. Clone & Configure
+
 ```bash
 git clone https://github.com/amansheikh-techie/FactCheck_Radar.git
 cd FactCheck_Radar
@@ -127,6 +134,7 @@ cp .env.example .env
 ```
 
 Edit `.env` and insert your API keys:
+
 ```env
 NEBIUS_API_KEY=your_nebius_api_key_here
 TAVILY_API_KEY=your_tavily_api_key_here
@@ -140,6 +148,7 @@ MODEL_REASONING=nvidia/Nemotron-3-Ultra-550b-a55b
 ### 2. Run Locally (Integrated Full-Stack)
 
 #### Step A: Build Frontend
+
 ```bash
 cd frontend
 npm install
@@ -148,10 +157,12 @@ cd ..
 ```
 
 #### Step B: Run FastAPI Server
+
 ```bash
 pip install -r backend/requirements.txt
 python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
+
 Open your browser at **`http://127.0.0.1:8000`** to access the complete application!
 
 ---
@@ -159,6 +170,7 @@ Open your browser at **`http://127.0.0.1:8000`** to access the complete applicat
 ### 3. Run with Docker
 
 Build and run the unified multi-stage container:
+
 ```bash
 # Using Docker directly
 docker build -t factcheck-radar .
@@ -167,6 +179,7 @@ docker run -p 8000:8000 --env-file .env factcheck-radar
 # Or using Docker Compose
 docker compose up --build
 ```
+
 Navigate to **`http://localhost:8000`**.
 
 ---
@@ -176,15 +189,19 @@ Navigate to **`http://localhost:8000`**.
 FactCheck Radar comes with comprehensive automated tests and a live smoke test script.
 
 ### Run Unit Tests
+
 ```bash
 python -m pytest backend/tests -v
 ```
+
 *Validates Pydantic schemas, cache TTL/LRU eviction, SSRF guards, agent pipeline orchestration, and graceful unverifiable fallbacks.*
 
 ### Run Live Smoke Test (requires API keys in `.env`)
+
 ```bash
 python backend/smoke_test.py
 ```
+
 *Tests 3 real-world claims (True, False, Ambiguous) end-to-end against live Nebius Token Factory and Tavily APIs, printing a formatted results table.*
 
 ---
@@ -192,7 +209,7 @@ python backend/smoke_test.py
 ## ⚙️ Configuration Reference
 
 | Environment Variable | Default Value | Description |
-|---|---|---|
+| --- | --- | --- |
 | `NEBIUS_API_KEY` | *(Required)* | API key for Nebius Token Factory |
 | `NEBIUS_BASE_URL` | `https://api.tokenfactory.nebius.com/v1` | OpenAI-compatible base URL |
 | `TAVILY_API_KEY` | *(Required)* | API key for Tavily AI Search |
