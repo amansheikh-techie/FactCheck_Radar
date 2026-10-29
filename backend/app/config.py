@@ -7,36 +7,81 @@ from pydantic import Field
 class Settings(BaseSettings):
     """All config loaded from .env or environment variables."""
 
+    # Active LLM Provider: "nvidia" (default) or "nebius"
+    llm_provider: str = Field(
+        default="nvidia",
+        description="Active LLM provider: 'nvidia' (default) or 'nebius'",
+    )
+
     # Nebius Token Factory
     nebius_api_key: str = Field(default="", description="Nebius Token Factory API key")
     nebius_base_url: str = Field(
-        default="https://api.tokenfactory.nebius.com/v1",
+        default="https://api.tokenfactory.nebius.com/v1/",
         description="OpenAI-compatible base URL for Nebius Token Factory",
+    )
+    nebius_model_fast: str = Field(
+        default="nvidia/Nemotron-3-Nano-30B-A3B",
+        description="Fast model for Nebius provider",
+    )
+    nebius_model_reasoning: str = Field(
+        default="nvidia/Nemotron-3-Ultra-550b-a55b",
+        description="Reasoning model for Nebius provider",
+    )
+
+    # NVIDIA Build NIM API
+    nvidia_api_key: str = Field(default="", description="NVIDIA Build API key")
+    nvidia_base_url: str = Field(
+        default="https://integrate.api.nvidia.com/v1",
+        description="OpenAI-compatible base URL for NVIDIA Build API",
+    )
+    nvidia_model_fast: str = Field(
+        default="nvidia/nemotron-3.5-lightning-30b-a3b",
+        description="Fast model for NVIDIA provider",
+    )
+    nvidia_model_reasoning: str = Field(
+        default="nvidia/nemotron-3-ultra-550b-a55b",
+        description="Reasoning model for NVIDIA provider",
     )
 
     # Tavily
     tavily_api_key: str = Field(default="", description="Tavily API key for web search")
 
-    # Model IDs
+    # Optional generic overrides across providers
     model_fast: str = Field(
-        default="nvidia/Nemotron-3-Nano-30B-A3B",
-        description="Fast model for claim extraction, query gen, source assessment",
+        default="",
+        description="Override fast model regardless of provider",
     )
     model_reasoning: str = Field(
-        default="nvidia/Nemotron-3-Ultra-550b-a55b",
-        description="Reasoning model for final verdict",
+        default="",
+        description="Override reasoning model regardless of provider",
     )
 
-    # Fallback model IDs (tried in order if primary is unavailable)
+    # Explicit Demo Mode flag (default False - never silent fallback)
+    demo_mode: bool = Field(
+        default=False,
+        description="Explicit demo mode flag",
+    )
+
+    # Fallback model candidates (tried in order if primary is unavailable)
     model_fast_fallbacks: list[str] = Field(
         default=[
+            "nvidia/nemotron-3.5-lightning-30b-a3b",
+            "nvidia/nemotron-3.5-bolt-e4b",
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+            "nvidia/llama-3.1-nemotron-70b-instruct",
+            "nvidia/Nemotron-3-Nano-30B-A3B",
             "nvidia/nemotron-3-super-120b-a12b",
             "nvidia/Nemotron-3_5-Lightning",
         ]
     )
     model_reasoning_fallbacks: list[str] = Field(
         default=[
+            "nvidia/nemotron-3-ultra-550b-a55b",
+            "nvidia/Nemotron-3-Ultra-550b-a55b",
+            "nvidia/nemotron-3.5-super-vl-120b-a12b",
+            "nvidia/nemotron-4-340b-instruct",
             "nvidia/nemotron-3-super-120b-a12b",
+            "nvidia/llama-3.1-nemotron-70b-instruct",
         ]
     )
 

@@ -1,8 +1,9 @@
-"""OpenAI-compatible client for Nebius Token Factory with model validation and fallback."""
+"""OpenAI-compatible client factory for switchable LLM providers (NVIDIA or Nebius)."""
 
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import logging
 from typing import TypeVar
@@ -18,84 +19,210 @@ T = TypeVar("T", bound=BaseModel)
 
 
 def _clean_json_str(text: str) -> str:
-    """Strip markdown code fence blocks if returned by the LLM."""
+    """Robustly extract and clean JSON object from LLM response."""
+    if not text:
+        return "{}"
     cleaned = text.strip()
-    if cleaned.startswith("```json"):
-        cleaned = cleaned[7:]
-    elif cleaned.startswith("```"):
-        cleaned = cleaned[3:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
+    # Strip code fences if present
+    if "```json" in cleaned:
+        parts = cleaned.split("```json", 1)[1].split("```", 1)
+        cleaned = parts[0].strip()
+    elif "```" in cleaned:
+        parts = cleaned.split("```", 1)[1].split("```", 1)
+        cleaned = parts[0].strip()
+
+    # Extract outermost JSON object
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        cleaned = cleaned[start : end + 1]
     return cleaned.strip()
 
 
-class NebiusClient:
-    """Wrapper around the OpenAI SDK pointing at Nebius Token Factory."""
+def _is_placeholder(val: str | None) -> bool:
+    """Check if an environment variable value is unset or a placeholder."""
+    if not val:
+        return True
+    s = val.strip().lower()
+    return (
+        s.startswith("your_")
+        or s.startswith("your-")
+        or "placeholder" in s
+        or "<" in s
+        or len(s) < 8
+    )
+
+
+class LLMClient:
+    """OpenAI-compatible unified client for NVIDIA NIM and Nebius Token Factory."""
 
     def __init__(self) -> None:
-        if not settings.nebius_api_key:
-            logger.warning("NEBIUS_API_KEY is not set — LLM calls will fail")
+        self.provider: str = (settings.llm_provider or "nvidia").strip().lower()
+        if self.provider == "nebius":
+            self.base_url: str = settings.nebius_base_url
+            self.api_key: str = settings.nebius_api_key
+            self._default_fast: str = settings.nebius_model_fast
+            self._default_reasoning: str = settings.nebius_model_reasoning
+            self._key_env_var: str = "NEBIUS_API_KEY"
+            self._url_env_var: str = "NEBIUS_BASE_URL"
+        else:
+            self.provider = "nvidia"
+            self.base_url = settings.nvidia_base_url
+            self.api_key = settings.nvidia_api_key
+            self._default_fast = settings.nvidia_model_fast
+            self._default_reasoning = settings.nvidia_model_reasoning
+            self._key_env_var: str = "NVIDIA_API_KEY"
+            self._url_env_var: str = "NVIDIA_BASE_URL"
 
         self._client = OpenAI(
-            base_url=settings.nebius_base_url,
-            api_key=settings.nebius_api_key or "placeholder",
+            base_url=self.base_url,
+            api_key=self.api_key or "placeholder",
             timeout=60.0,
         )
         self._available_models: set[str] = set()
+        self._nemotron_models: list[str] = []
         self._resolved_fast: str | None = None
         self._resolved_reasoning: str | None = None
         self.fast_fallback_triggered: bool = False
         self.reasoning_fallback_triggered: bool = False
 
+    def validate_configuration(self) -> None:
+        """Fail fast if the active provider's key, base URL, or model is missing/placeholder."""
+        if _is_placeholder(self.api_key):
+            raise RuntimeError(
+                f"Active LLM provider is '{self.provider}', but {self._key_env_var} "
+                f"is missing or still a placeholder. Please configure a valid key in .env or environment."
+            )
+        if not self.base_url or not self.base_url.startswith("http"):
+            raise RuntimeError(
+                f"Active LLM provider is '{self.provider}', but {self._url_env_var} "
+                f"is missing or invalid ('{self.base_url}')."
+            )
+        fast_candidate = settings.model_fast or self._default_fast
+        reasoning_candidate = settings.model_reasoning or self._default_reasoning
+        if not fast_candidate or not reasoning_candidate:
+            raise RuntimeError(
+                f"Active LLM provider is '{self.provider}', but fast or reasoning model is not configured."
+            )
+
+    @property
+    def has_api_key(self) -> bool:
+        return not _is_placeholder(self.api_key)
+
     # ── Model discovery ──────────────────────────────────
 
     async def discover_models(self) -> None:
-        """Call /v1/models to discover which Nemotron models are available."""
+        """Call /v1/models for active provider, list Nemotron models, and pick valid IDs."""
+        primary_fast = settings.model_fast or self._default_fast
+        primary_reasoning = settings.model_reasoning or self._default_reasoning
+
         try:
-            # Run sync SDK call in thread to avoid blocking the event loop
             response = await asyncio.to_thread(self._client.models.list)
             self._available_models = {m.id for m in response.data}
-            logger.info("Available models on Token Factory: %s", self._available_models)
+            self._nemotron_models = sorted(
+                [m_id for m_id in self._available_models if "nemotron" in m_id.lower()]
+            )
+            logger.info(
+                "Discovered %d models on %s (%d Nemotron models): %s",
+                len(self._available_models),
+                self.provider,
+                len(self._nemotron_models),
+                self._nemotron_models,
+            )
         except Exception as exc:
-            logger.warning("Could not list models from Token Factory: %s", exc)
-            # Assume configured models are available
-            self._available_models = {settings.model_fast, settings.model_reasoning}
+            logger.warning(
+                "Could not list models from provider '%s' (%s): %s",
+                self.provider, self.base_url, exc,
+            )
+            self._available_models = {primary_fast, primary_reasoning}
+            self._nemotron_models = [primary_fast, primary_reasoning]
 
         self._resolved_fast = self._resolve_model(
-            settings.model_fast, settings.model_fast_fallbacks, "fast"
+            primary_fast, settings.model_fast_fallbacks, "fast"
         )
         self._resolved_reasoning = self._resolve_model(
-            settings.model_reasoning, settings.model_reasoning_fallbacks, "reasoning"
+            primary_reasoning, settings.model_reasoning_fallbacks, "reasoning"
         )
 
-    def _resolve_model(self, primary: str, fallbacks: list[str], role: str) -> str | None:
-        """Pick the first available model from [primary] + fallbacks."""
-        candidates = [primary] + fallbacks
-        for model_id in candidates:
-            if model_id in self._available_models:
-                if model_id != primary:
-                    logger.warning(
-                        "Primary %s model '%s' unavailable — falling back to '%s'",
-                        role, primary, model_id,
-                    )
-                    if role == "fast":
-                        self.fast_fallback_triggered = True
-                    elif role == "reasoning":
-                        self.reasoning_fallback_triggered = True
-                else:
-                    logger.info("Using %s model: %s", role, model_id)
-                return model_id
-        logger.error("No %s model available! Tried: %s", role, candidates)
-        # Last resort: just try the primary anyway
-        return primary
+    def _resolve_model(self, desired: str, fallbacks: list[str], role: str) -> str:
+        """Pick desired model if available; else fallbacks; else closest Nemotron model."""
+        # 1. Exact match
+        if desired in self._available_models:
+            logger.info("Using %s model on %s: %s", role, self.provider, desired)
+            return desired
+
+        # 1b. Case-insensitive match
+        for m in self._available_models:
+            if m.lower() == desired.lower():
+                logger.info(
+                    "Matched %s model '%s' (casing: '%s') on %s",
+                    role, desired, m, self.provider,
+                )
+                return m
+
+        # 2. Check candidate fallbacks
+        for fb in fallbacks:
+            if fb in self._available_models:
+                logger.warning(
+                    "Configured %s model '%s' unavailable on %s — falling back to '%s'",
+                    role, desired, self.provider, fb,
+                )
+                if role == "fast":
+                    self.fast_fallback_triggered = True
+                elif role == "reasoning":
+                    self.reasoning_fallback_triggered = True
+                return fb
+
+        # 3. Find closest available Nemotron model
+        if self._nemotron_models:
+            closest = self._find_closest_nemotron(desired, role, self._nemotron_models)
+            logger.warning(
+                "Configured %s model '%s' not found on %s. Using closest Nemotron model: '%s'",
+                role, desired, self.provider, closest,
+            )
+            if role == "fast":
+                self.fast_fallback_triggered = True
+            elif role == "reasoning":
+                self.reasoning_fallback_triggered = True
+            return closest
+
+        logger.warning(
+            "No Nemotron models found on %s; keeping desired model '%s'",
+            self.provider, desired,
+        )
+        return desired
+
+    def _find_closest_nemotron(self, target: str, role: str, nemotrons: list[str]) -> str:
+        """Find the closest Nemotron model using role keywords and fuzzy match."""
+        if role == "fast":
+            keywords = ["lightning", "nano", "bolt", "30b", "51b", "70b"]
+        else:
+            keywords = ["ultra", "550b", "super", "340b", "reasoning"]
+
+        for kw in keywords:
+            for m in nemotrons:
+                if kw in m.lower():
+                    return m
+
+        matches = difflib.get_close_matches(target, nemotrons, n=1, cutoff=0.0)
+        if matches:
+            return matches[0]
+        return nemotrons[0]
 
     @property
     def fast_model(self) -> str:
-        return self._resolved_fast or settings.model_fast
+        return self._resolved_fast or settings.model_fast or self._default_fast
 
     @property
     def reasoning_model(self) -> str:
-        return self._resolved_reasoning or settings.model_reasoning
+        return self._resolved_reasoning or settings.model_reasoning or self._default_reasoning
+
+    @property
+    def models_used(self) -> dict[str, str]:
+        return {
+            "fast": self.fast_model,
+            "reasoning": self.reasoning_model,
+        }
 
     # ── Chat completion with JSON parsing ────────────────
 
@@ -114,7 +241,7 @@ class NebiusClient:
         On malformed JSON/schema, do one in-band fix-prompt retry.
         """
         last_exc: Exception | None = None
-        for attempt in range(3):  # up to 3 attempts
+        for attempt in range(3):
             try:
                 return await self._chat_json_inner(
                     model=model,
@@ -129,12 +256,12 @@ class NebiusClient:
                 if attempt < 2:
                     delay = min(1.0 * (2 ** attempt), 10.0)
                     logger.warning(
-                        "API error attempt %d/3: %s — retrying in %.1fs",
-                        attempt + 1, exc, delay,
+                        "API error attempt %d/3 on %s (%s): %s — retrying in %.1fs",
+                        attempt + 1, self.provider, model, exc, delay,
                     )
                     await asyncio.sleep(delay)
                 else:
-                    logger.error("All 3 API attempts failed: %s", exc)
+                    logger.error("All 3 API attempts failed on %s (%s): %s", self.provider, model, exc)
         raise last_exc  # type: ignore[misc]
 
     async def _chat_json_inner(
@@ -146,17 +273,12 @@ class NebiusClient:
         temperature: float,
         max_tokens: int,
     ) -> T:
-        """Inner call: completion → parse → validate → optional JSON-fix retry.
-        
-        Uses asyncio.to_thread to avoid blocking the event loop with
-        the synchronous OpenAI SDK.
-        """
+        """Inner call: completion -> parse -> validate -> optional JSON-fix retry."""
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
 
-        # Offload blocking SDK call to a thread
         response = await asyncio.to_thread(
             self._client.chat.completions.create,
             model=model,
@@ -167,33 +289,33 @@ class NebiusClient:
         )
 
         raw = response.choices[0].message.content or ""
-        logger.debug("Raw LLM response (%s): %.300s", model, raw)
+        logger.debug("Raw LLM response (%s on %s): %.300s", model, self.provider, raw)
 
         try:
             parsed = json.loads(_clean_json_str(raw))
             return output_schema.model_validate(parsed)
         except (json.JSONDecodeError, ValidationError) as first_err:
             logger.warning(
-                "JSON parse/validation failed on first attempt: %s — retrying with fix prompt",
-                first_err,
+                "JSON parse/validation failed on first attempt (%s): %s — retrying with clean prompt",
+                model, first_err,
             )
-            # One in-band retry with the error context appended
-            fix_prompt = (
-                f"Your previous JSON output was invalid.\n"
-                f"Error: {first_err}\n"
-                f"Original output: {raw[:1000]}\n\n"
-                f"Please output ONLY valid JSON matching the required schema. "
-                f"Do not include markdown code fences or any text outside the JSON object."
-            )
-            messages_retry = messages + [
-                {"role": "assistant", "content": raw},
-                {"role": "user", "content": fix_prompt},
+            # Re-prompt cleanly without sending corrupted assistant text
+            retry_messages = [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": (
+                        f"{user_prompt}\n\n"
+                        f"IMPORTANT: Output ONLY a single valid JSON object strictly matching the required schema. "
+                        f"Do not include any preamble, markdown code blocks, or extra text."
+                    ),
+                },
             ]
 
             response2 = await asyncio.to_thread(
                 self._client.chat.completions.create,
                 model=model,
-                messages=messages_retry,
+                messages=retry_messages,
                 temperature=0.1,
                 max_tokens=max_tokens,
                 response_format={"type": "json_object"},
@@ -204,5 +326,12 @@ class NebiusClient:
             return output_schema.model_validate(parsed2)
 
 
-# Singleton
-nebius_client = NebiusClient()
+def get_llm_client() -> LLMClient:
+    """Factory creating configured LLMClient singleton."""
+    return LLMClient()
+
+
+# Singleton instance and backwards-compatible aliases
+nebius_client: LLMClient = get_llm_client()
+llm_client: LLMClient = nebius_client
+NebiusClient = LLMClient

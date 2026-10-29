@@ -20,6 +20,10 @@ class FactCheckRequest(BaseModel):
         max_length=5000,
         description="A claim, headline, or URL to fact-check",
     )
+    demo_mode: bool = Field(
+        default=False,
+        description="Explicitly run in demo mode with sample data (defaults to False)",
+    )
 
 
 # ──────────────────────────────────────────────
@@ -69,8 +73,8 @@ class SourceAssessment(BaseModel):
 
 class SourceAssessmentOutput(BaseModel):
     """Output of the source assessment step for one claim."""
-    claim_index: int = Field(..., ge=0)
-    assessments: list[SourceAssessment]
+    claim_index: int = Field(default=0, ge=0)
+    assessments: list[SourceAssessment] = Field(default_factory=list)
 
 
 VerdictLabel = Literal[
@@ -109,12 +113,14 @@ class FactCheckResult(BaseModel):
     """Complete fact-check result returned to the frontend."""
     input: str
     claim_verdicts: list[ClaimVerdict]
+    provider: str = Field(default="nebius", description="LLM provider: 'nebius', 'nvidia', or 'sample'")
+    models_used: dict[str, str] = Field(default_factory=dict, description="Models actually used")
     model_fast: str = Field(..., description="Fast model ID actually used")
     model_reasoning: str = Field(..., description="Reasoning model ID actually used")
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
-    is_live: bool = Field(default=True, description="True if generated from live Nebius & Tavily APIs")
+    is_live: bool = Field(default=True, description="True if generated from live APIs")
     status_notice: str | None = Field(default=None, description="Notice if running with sample/fallback data")
 
 
