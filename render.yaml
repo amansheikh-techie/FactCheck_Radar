@@ -8,15 +8,25 @@ services:
     envVars:
       - key: PORT
         value: 8000
+      - key: LLM_PROVIDER
+        value: nvidia
+      - key: NVIDIA_BASE_URL
+        value: https://integrate.api.nvidia.com/v1
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_MODEL_FAST
+        value: nvidia/nemotron-3.5-lightning-30b-a3b
+      - key: NVIDIA_MODEL_REASONING
+        value: nvidia/nemotron-3-ultra-550b-a55b
       - key: NEBIUS_BASE_URL
-        value: https://api.tokenfactory.nebius.com/v1
+        value: https://api.tokenfactory.nebius.com/v1/
       - key: NEBIUS_API_KEY
         sync: false
+      - key: NEBIUS_MODEL_FAST
+        value: nvidia/Nemotron-3-Nano-30B-A3B
+      - key: NEBIUS_MODEL_REASONING
+        value: nvidia/Nemotron-3-Ultra-550b-a55b
       - key: TAVILY_API_KEY
         sync: false
-      - key: MODEL_FAST
-        value: nvidia/Nemotron-3-Nano-30B-A3B
-      - key: MODEL_REASONING
-        value: nvidia/Nemotron-3-Ultra-550b-a55b
       - key: ALLOWED_ORIGINS
         sync: false
