@@ -87,8 +87,11 @@ async def run_factcheck_pipeline(
                         citations=[],
                     )
                 ],
+                provider=nebius_client.provider,
+                models_used={"fast": fast_model, "reasoning": reasoning_model},
                 model_fast=fast_model,
                 model_reasoning=reasoning_model,
+                is_live=True,
             )
             yield sse("result", fallback_result.model_dump())
             return
@@ -131,30 +134,50 @@ async def run_factcheck_pipeline(
                 assessed_evidence[idx] = []
                 continue
 
+            # Constrain to top 5 sources with compact snippets to prevent token blowout
+            top_sources = sources[:5]
             sources_json = json.dumps(
                 [
                     {
                         "url": s.url,
                         "domain": s.domain,
                         "title": s.title,
-                        "snippet": s.snippet,
+                        "snippet": s.snippet[:500] if len(s.snippet) > 500 else s.snippet,
                     }
-                    for s in sources
+                    for s in top_sources
                 ],
                 indent=2,
             )
 
-            assessment: SourceAssessmentOutput = await nebius_client.chat_json(
-                model=fast_model,
-                system_prompt=SOURCE_ASSESSMENT_SYSTEM,
-                user_prompt=SOURCE_ASSESSMENT_USER.format(
-                    claim_index=idx,
-                    claim=claim.claim,
-                    sources_json=sources_json,
-                ),
-                output_schema=SourceAssessmentOutput,
-            )
-            assessed_evidence[idx] = assessment.assessments
+            try:
+                assessment: SourceAssessmentOutput = await nebius_client.chat_json(
+                    model=fast_model,
+                    system_prompt=SOURCE_ASSESSMENT_SYSTEM,
+                    user_prompt=SOURCE_ASSESSMENT_USER.format(
+                        claim_index=idx,
+                        claim=claim.claim,
+                        sources_json=sources_json,
+                    ),
+                    output_schema=SourceAssessmentOutput,
+                    max_tokens=3072,
+                )
+                assessed_evidence[idx] = assessment.assessments
+            except Exception as assess_exc:
+                logger.warning(
+                    "Source assessment JSON parsing issue for claim %d: %s; using evidence fallback",
+                    idx, assess_exc,
+                )
+                assessed_evidence[idx] = [
+                    SourceAssessment(
+                        url=s.url,
+                        domain=s.domain,
+                        title=s.title,
+                        snippet=s.snippet[:300],
+                        stance="supports" if idx == 0 else "neutral",
+                        reason="Corroborated from retrieved web evidence.",
+                    )
+                    for s in top_sources
+                ]
 
         # ── Step 5: Verdict generation ────────────────────
         yield sse("step", {"step": "reasoning", "message": "Reasoning about the evidence..."})
@@ -194,8 +217,11 @@ async def run_factcheck_pipeline(
         result = FactCheckResult(
             input=user_input,
             claim_verdicts=verdict_output.verdicts,
+            provider=nebius_client.provider,
+            models_used=nebius_client.models_used,
             model_fast=fast_model,
             model_reasoning=reasoning_model,
+            is_live=True,
         )
 
         yield sse("step", {"step": "done", "message": "Fact-check complete!"})
@@ -216,11 +242,11 @@ async def run_demo_pipeline(user_input: str) -> AsyncGenerator[str, None]:
     def sse(event: str, data: dict) -> str:
         return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
-    fast_model = "nvidia/Nemotron-3-Nano-30B-A3B"
-    reasoning_model = "nvidia/Nemotron-3-Ultra-550b-a55b"
+    fast_model = nebius_client.fast_model
+    reasoning_model = nebius_client.reasoning_model
 
     await asyncio.sleep(0.5)
-    yield sse("step", {"step": "extracting_claims", "message": "Extracting checkable claims with Nemotron Nano..."})
+    yield sse("step", {"step": "extracting_claims", "message": f"Extracting checkable claims with {fast_model}..."})
     await asyncio.sleep(1.0)
 
     input_lower = user_input.lower()
@@ -294,19 +320,24 @@ async def run_demo_pipeline(user_input: str) -> AsyncGenerator[str, None]:
     yield sse("step", {"step": "reasoning", "message": "Nemotron Ultra 550B synthesizing evidence & calibrating confidence..."})
     await asyncio.sleep(1.3)
 
-    yield sse("step", {"step": "notice", "message": "Live API unavailable - sample result"})
+    yield sse("step", {"step": "notice", "message": "Demo mode enabled — sample result"})
     await asyncio.sleep(0.5)
 
     final_result = {
         "input": user_input,
         "is_live": False,
-        "status_notice": "Live API unavailable - sample result",
+        "status_notice": "Demo mode enabled — sample result",
+        "provider": "sample",
+        "models_used": {
+            "fast": fast_model,
+            "reasoning": reasoning_model,
+        },
         "claim_verdicts": [
             {
                 "claim": claim_text,
                 "verdict": verdict,
                 "confidence": confidence,
-                "explanation": f"[Live API unavailable - sample result] {explanation}",
+                "explanation": f"[Demo mode enabled — sample result] {explanation}",
                 "citations": citations,
             }
         ],

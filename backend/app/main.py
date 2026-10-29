@@ -25,24 +25,23 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: validate keys, discover models. Shutdown: clean up."""
+    """Startup: fail fast on invalid credentials, discover models. Shutdown: clean up."""
     logger.info("=" * 60)
     logger.info("FactCheck Radar starting up...")
+    logger.info("Active LLM Provider: %s", nebius_client.provider.upper())
     logger.info("=" * 60)
 
-    # Check API keys
-    if not settings.nebius_api_key:
-        logger.error("⚠️  NEBIUS_API_KEY is not set! LLM calls will fail.")
-    else:
-        logger.info("✅ NEBIUS_API_KEY is configured")
+    # Fail fast if selected provider credentials are missing or placeholder
+    nebius_client.validate_configuration()
+    logger.info("✅ %s credentials validated successfully", nebius_client.provider.upper())
 
-    if not settings.tavily_api_key:
-        logger.error("⚠️  TAVILY_API_KEY is not set! Web search will fail.")
+    if not settings.tavily_api_key or settings.tavily_api_key.startswith("your_"):
+        logger.warning("⚠️  TAVILY_API_KEY is not configured — live web search will fail.")
     else:
         logger.info("✅ TAVILY_API_KEY is configured")
 
     # Discover available models
-    logger.info("Discovering models on Nebius Token Factory...")
+    logger.info("Discovering models on %s (%s)...", nebius_client.provider, nebius_client.base_url)
     await nebius_client.discover_models()
     logger.info(
         "Active Fast Model: %s (Fallback triggered: %s)",
@@ -67,7 +66,7 @@ async def lifespan(app: FastAPI):
 # Create app
 app = FastAPI(
     title="FactCheck Radar",
-    description="AI-powered fact-checking agent using NVIDIA Nemotron via Nebius Token Factory",
+    description="AI-powered fact-checking agent using NVIDIA Nemotron via NVIDIA NIM or Nebius Token Factory",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -91,15 +90,24 @@ app.include_router(factcheck_router)
 @app.get("/health")
 @app.get("/api/health")
 async def health():
-    """Health check endpoint returning model availability and operational status."""
+    """Health check endpoint returning active provider, models, and operational status."""
     return {
         "status": "ok",
+        "provider": nebius_client.provider,
+        "base_url": nebius_client.base_url,
+        "model_fast": nebius_client.fast_model,
+        "model_reasoning": nebius_client.reasoning_model,
+        "models_used": {
+            "fast": nebius_client.fast_model,
+            "reasoning": nebius_client.reasoning_model,
+        },
         "models": {
             "fast": nebius_client.fast_model,
             "reasoning": nebius_client.reasoning_model,
         },
         "api_keys": {
-            "nebius": bool(settings.nebius_api_key),
+            "configured": nebius_client.has_api_key,
+            "provider": nebius_client.provider,
             "tavily": bool(settings.tavily_api_key),
         },
     }

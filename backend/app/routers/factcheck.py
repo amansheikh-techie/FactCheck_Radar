@@ -38,13 +38,13 @@ async def factcheck(payload: FactCheckRequest, request: Request):
     if not payload.input.strip():
         raise HTTPException(status_code=400, detail="Input cannot be empty.")
 
-    # Determine whether to run live or demo mode
-    use_demo = not (settings.nebius_api_key and settings.tavily_api_key)
-    if use_demo:
-        logger.info("Running factcheck in demo mode (live API keys not configured)")
+    # Explicit demo mode: sample data only appears when user explicitly enables demo mode
+    is_demo = payload.demo_mode or settings.demo_mode
+    if is_demo:
+        logger.info("Explicit demo mode requested by user; running demo pipeline")
 
-    # Check cache
-    cache_key = cache.make_key(payload.input)
+    # Check cache (differentiate demo results from live results in key)
+    cache_key = cache.make_key(f"{payload.input}:demo={is_demo}")
     cached_result = cache.get(cache_key)
 
     if cached_result is not None:
@@ -64,30 +64,12 @@ async def factcheck(payload: FactCheckRequest, request: Request):
             },
         )
 
-    # Run pipeline with SSE streaming
+    # Run pipeline with SSE streaming (NO silent fallback to sample data)
     async def event_stream():
         final_result = None
-        has_error = False
-        if not use_demo:
-            try:
-                async for event_line in run_factcheck_pipeline(payload.input):
-                    if "event: error" in event_line:
-                        logger.warning("Live pipeline emitted error event; falling back to demo pipeline.")
-                        has_error = True
-                        break
-                    yield event_line
-                    if "event: result" in event_line:
-                        try:
-                            data_line = event_line.split("data: ", 1)[1].strip()
-                            final_result = json.loads(data_line)
-                        except (IndexError, json.JSONDecodeError):
-                            pass
-            except Exception as exc:
-                logger.warning("Live pipeline encountered error (%s); falling back to demo pipeline.", exc)
-                has_error = True
 
-        if use_demo or has_error:
-            yield f"event: step\ndata: {json.dumps({'step': 'notice', 'message': 'Live API unavailable - sample result'})}\n\n"
+        if is_demo:
+            yield f"event: step\ndata: {json.dumps({'step': 'notice', 'message': 'Demo mode enabled — sample result'})}\n\n"
             async for event_line in run_demo_pipeline(payload.input):
                 yield event_line
                 if "event: result" in event_line:
@@ -96,8 +78,22 @@ async def factcheck(payload: FactCheckRequest, request: Request):
                         final_result = json.loads(data_line)
                     except (IndexError, json.JSONDecodeError):
                         pass
+        else:
+            # Live pipeline strictly: fails on any API error without falling back to sample data
+            try:
+                async for event_line in run_factcheck_pipeline(payload.input):
+                    yield event_line
+                    if "event: result" in event_line:
+                        try:
+                            data_line = event_line.split("data: ", 1)[1].strip()
+                            final_result = json.loads(data_line)
+                        except (IndexError, json.JSONDecodeError):
+                            pass
+            except Exception as exc:
+                logger.error("Live pipeline error: %s", exc)
+                yield f"event: error\ndata: {json.dumps({'message': f'Live API error: {str(exc)}'})}\n\n"
 
-        # Cache the result
+        # Cache the result if successfully generated
         if final_result is not None:
             cache.set(cache_key, final_result)
             logger.info("Cached result for key %s", cache_key)
