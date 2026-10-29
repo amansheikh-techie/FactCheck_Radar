@@ -9,7 +9,7 @@ export function useFactCheck() {
   const [error, setError] = useState(null);
   const abortControllerRef = useRef(null);
 
-  const startFactCheck = useCallback(async (input) => {
+  const startFactCheck = useCallback(async (input, demoMode = false) => {
     if (!input || !input.trim()) return;
 
     // Reset previous states
@@ -32,7 +32,7 @@ export function useFactCheck() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ input: input.trim() }),
+        body: JSON.stringify({ input: input.trim(), demo_mode: Boolean(demoMode) }),
         signal: abortControllerRef.current.signal,
       });
 

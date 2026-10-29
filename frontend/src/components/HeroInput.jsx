@@ -26,17 +26,18 @@ const SAMPLE_CLAIMS = [
 
 export function HeroInput({ onCheck, loading }) {
   const [input, setInput] = useState('');
+  const [demoMode, setDemoMode] = useState(false);
   const maxLength = 5000;
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
-    onCheck(input);
+    onCheck(input, demoMode);
   };
 
   const handleSelectSample = (sampleText) => {
     setInput(sampleText);
-    onCheck(sampleText);
+    onCheck(sampleText, demoMode);
   };
 
   return (
@@ -68,11 +69,24 @@ export function HeroInput({ onCheck, loading }) {
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-mono">
-              <Link className="w-3.5 h-3.5 text-slate-400" />
-              <span>Supports plain text or full news URLs</span>
-              <span>•</span>
-              <span>{input.length}/{maxLength}</span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                id="mode-toggle-btn"
+                onClick={() => setDemoMode(!demoMode)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-mono font-medium border transition-colors ${
+                  demoMode
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400'
+                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                }`}
+                title="Toggle between live inference and explicit demo sample mode"
+              >
+                <span className={`w-2 h-2 rounded-full ${demoMode ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
+                <span>{demoMode ? 'Sample Demo Mode' : 'Live AI Mode'}</span>
+              </button>
+              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-mono">
+                <span>{input.length}/{maxLength}</span>
+              </div>
             </div>
 
             <button

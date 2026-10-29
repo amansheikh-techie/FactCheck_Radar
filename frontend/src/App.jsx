@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useFactCheck } from './hooks/useFactCheck';
 import { HeroInput } from './components/HeroInput';
 import { ProgressTimeline } from './components/ProgressTimeline';
@@ -6,7 +6,7 @@ import { ResultCard } from './components/ResultCard';
 import { HowItWorks } from './components/HowItWorks';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ShareButton } from './components/ShareButton';
-import { Radar, AlertCircle, AlertTriangle, RotateCcw, ShieldCheck, Sparkles } from 'lucide-react';
+import { Radar, AlertCircle, AlertTriangle, RotateCcw, ShieldCheck, Sparkles, Cpu } from 'lucide-react';
 
 export default function App() {
   const {
@@ -19,6 +19,19 @@ export default function App() {
     startFactCheck,
     reset,
   } = useFactCheck();
+
+  const [healthData, setHealthData] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/health')
+      .then((res) => res.json())
+      .then((data) => setHealthData(data))
+      .catch(() => {});
+  }, []);
+
+  const activeProvider = result?.provider && result.provider !== 'sample'
+    ? result.provider
+    : (healthData?.provider || 'nvidia');
 
   return (
     <div className="min-h-screen flex flex-col justify-between selection:bg-emerald-500 selection:text-white">
@@ -35,11 +48,11 @@ export default function App() {
                   FactCheck <span className="text-emerald-500 font-mono">Radar</span>
                 </span>
                 <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                  NVIDIA Nemotron AI
+                  via {activeProvider}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium hidden sm:block">
-                Autonomous Evidence Retrieval & Reasoning via Nebius Token Factory
+                Autonomous Evidence Retrieval & Reasoning with NVIDIA Nemotron
               </p>
             </div>
           </div>
@@ -140,22 +153,28 @@ export default function App() {
               </div>
             </div>
 
-            {/* Live API Unavailable / Sample Result Warning */}
-            {(!result.is_live || result.status_notice) && (
+            {/* Explicit Demo Mode / Live API Notice */}
+            {(!result.is_live || result.status_notice || result.provider === 'sample') && (
               <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 flex items-start gap-3 animate-fade-in text-sm font-medium">
                 <AlertTriangle className="w-5 h-5 shrink-0 text-amber-500 mt-0.5" />
                 <div>
-                  <div className="font-bold tracking-tight">Live API unavailable - sample result</div>
-                  <div className="text-xs opacity-90 mt-0.5">Live Nebius Token Factory or Tavily API call unavailable. Showing simulated demonstration schema result.</div>
+                  <div className="font-bold tracking-tight">
+                    {result.status_notice || 'Live API unavailable - sample result'}
+                  </div>
+                  <div className="text-xs opacity-90 mt-0.5">
+                    Showing demonstration schema result. FactCheck Radar is honest: never presenting sample data as live.
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Models Used Info Tag */}
-            <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100/80 dark:bg-slate-900/50 px-3 py-1.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
-              <span>Fast Model: <strong className="text-slate-700 dark:text-slate-300">{result.model_fast}</strong></span>
+            {/* Provider and Models Used Info Tag */}
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100/80 dark:bg-slate-900/50 px-3 py-1.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+              <span>Provider: <strong className="text-emerald-600 dark:text-emerald-400 uppercase">{result.provider || activeProvider}</strong></span>
               <span>•</span>
-              <span>Reasoning Model: <strong className="text-slate-700 dark:text-slate-300">{result.model_reasoning}</strong></span>
+              <span>Fast: <strong className="text-slate-700 dark:text-slate-300">{result.models_used?.fast || result.model_fast}</strong></span>
+              <span>•</span>
+              <span>Reasoning: <strong className="text-slate-700 dark:text-slate-300">{result.models_used?.reasoning || result.model_reasoning}</strong></span>
             </div>
 
             {/* Verdict Cards */}
@@ -175,7 +194,13 @@ export default function App() {
       <footer className="glass-panel border-t border-slate-200/80 dark:border-slate-800/80 py-6 px-4 text-center text-xs text-slate-500 dark:text-slate-400 transition-colors mt-12">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2 font-mono">
-            <span>Built for the <strong>Nebius x NVIDIA Global AI Hackathon</strong></span>
+            <span>
+              Powered by <strong>NVIDIA Nemotron</strong> via <strong className="text-emerald-500 uppercase">{activeProvider}</strong>
+            </span>
+            <span className="text-slate-300 dark:text-slate-700">|</span>
+            <span className="text-[11px] text-slate-400">
+              {result?.models_used?.fast || healthData?.model_fast || 'nemotron-fast'} & {result?.models_used?.reasoning || healthData?.model_reasoning || 'nemotron-ultra'}
+            </span>
           </div>
           <div className="flex items-center gap-4 text-xs font-medium">
             <span className="text-emerald-600 dark:text-emerald-400 font-mono">MIT License</span>
