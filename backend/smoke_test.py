@@ -109,12 +109,15 @@ async def run_single_smoke_test(item: dict, index: int):
 async def main():
     print("=" * 70)
     print("FACTCHECK RADAR — LIVE SMOKE TEST SUITE")
+    print(f"Active Provider: {nebius_client.provider.upper()}")
     print("=" * 70)
 
     # 1. Verify Credentials
-    if not settings.nebius_api_key or settings.nebius_api_key.startswith("your_"):
-        print("\n❌ NEBIUS_API_KEY is not configured in .env!")
-        print("Please set your Nebius Token Factory API key to run live smoke tests.")
+    try:
+        nebius_client.validate_configuration()
+        print(f"✅ {nebius_client.provider.upper()} credentials configured and validated")
+    except Exception as exc:
+        print(f"\n❌ Provider credential error: {exc}")
         return 1
 
     if not settings.tavily_api_key or settings.tavily_api_key.startswith("your_"):
@@ -123,7 +126,7 @@ async def main():
         return 1
 
     # 2. Verify Models endpoint
-    print("\n[+] Checking Nebius Token Factory connection & models...")
+    print(f"\n[+] Checking {nebius_client.provider.upper()} connection & models...")
     await nebius_client.discover_models()
     print(f"  Fast model:      {nebius_client.fast_model}")
     print(f"  Reasoning model: {nebius_client.reasoning_model}")
