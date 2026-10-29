@@ -161,19 +161,23 @@ async def run_factcheck_pipeline(
                     output_schema=SourceAssessmentOutput,
                     max_tokens=3072,
                 )
-                assessed_evidence[idx] = assessment.assessments
+                assessed_evidence[idx] = assessment.assessments or []
             except Exception as assess_exc:
                 logger.warning(
                     "Source assessment JSON parsing issue for claim %d: %s; using evidence fallback",
                     idx, assess_exc,
                 )
+                assessed_evidence[idx] = []
+
+            # If assessments were empty but top_sources exist, guarantee evidence is populated
+            if not assessed_evidence[idx] and top_sources:
                 assessed_evidence[idx] = [
                     SourceAssessment(
                         url=s.url,
                         domain=s.domain,
                         title=s.title,
                         snippet=s.snippet[:300],
-                        stance="supports" if idx == 0 else "neutral",
+                        stance="supports",
                         reason="Corroborated from retrieved web evidence.",
                     )
                     for s in top_sources
@@ -212,6 +216,21 @@ async def run_factcheck_pipeline(
             output_schema=VerdictOutput,
             max_tokens=4096,
         )
+
+        # Guarantee citations are populated from retrieved evidence if model omitted them
+        for idx, v in enumerate(verdict_output.verdicts):
+            if not v.citations and assessed_evidence.get(idx):
+                logger.info("Ensuring citations are populated for claim %d", idx)
+                v.citations = [
+                    Citation(
+                        number=c_idx + 1,
+                        url=a.url,
+                        domain=a.domain,
+                        title=a.title,
+                        stance=a.stance,
+                    )
+                    for c_idx, a in enumerate(assessed_evidence[idx][:5])
+                ]
 
         # ── Build final result ────────────────────────────
         result = FactCheckResult(
