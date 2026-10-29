@@ -17,7 +17,7 @@ services:
       - key: NVIDIA_MODEL_FAST
         value: nvidia/nemotron-3.5-lightning-30b-a3b
       - key: NVIDIA_MODEL_REASONING
-        value: nvidia/nemotron-3-ultra-550b-a55b
+        value: nvidia/nemotron-3.5-lightning-30b-a3b
       - key: NEBIUS_BASE_URL
         value: https://api.tokenfactory.nebius.com/v1/
       - key: NEBIUS_API_KEY

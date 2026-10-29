@@ -89,6 +89,9 @@ async def factcheck(payload: FactCheckRequest, request: Request):
                             final_result = json.loads(data_line)
                         except (IndexError, json.JSONDecodeError):
                             pass
+            except (asyncio.TimeoutError, TimeoutError):
+                logger.error("Live pipeline timed out after %.1fs", settings.pipeline_timeout)
+                yield f"event: error\ndata: {json.dumps({'message': f'Fact-check timed out after {int(settings.pipeline_timeout)} seconds. Upstream inference is experiencing latency; please retry.'})}\n\n"
             except Exception as exc:
                 logger.error("Live pipeline error: %s", exc)
                 yield f"event: error\ndata: {json.dumps({'message': f'Live API error: {str(exc)}'})}\n\n"

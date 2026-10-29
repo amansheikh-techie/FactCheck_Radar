@@ -77,7 +77,7 @@ class LLMClient:
         self._client = OpenAI(
             base_url=self.base_url,
             api_key=self.api_key or "placeholder",
-            timeout=60.0,
+            timeout=float(settings.llm_request_timeout),
         )
         self._available_models: set[str] = set()
         self._nemotron_models: list[str] = []
@@ -251,7 +251,18 @@ class LLMClient:
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
-            except (APIError, APITimeoutError, RateLimitError) as exc:
+            except APITimeoutError as exc:
+                last_exc = exc
+                logger.error(
+                    "LLM request timed out on %s (%s) after %.1fs: %s",
+                    self.provider, model, settings.llm_request_timeout, exc,
+                )
+                raise RuntimeError(
+                    f"Inference request to {self.provider.upper()} Nemotron timed out "
+                    f"after {int(settings.llm_request_timeout)}s. The inference cluster is under high load. "
+                    f"Please retry your fact-check in a few moments."
+                ) from exc
+            except (APIError, RateLimitError) as exc:
                 last_exc = exc
                 if attempt < 2:
                     delay = min(1.0 * (2 ** attempt), 10.0)

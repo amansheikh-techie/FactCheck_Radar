@@ -2,10 +2,11 @@
 
 ## Project Name: FactCheck Radar
 **Track**: Best Apps & Agents Track  
-**Elevator Pitch**: Autonomous multi-stage fact-checking agent combining fast Nemotron extraction with deep Nemotron Ultra 550B reasoning over live Tavily web evidence, featuring switchable inference providers (NVIDIA Build NIM and Nebius Token Factory).  
+**Elevator Pitch**: Autonomous multi-stage fact-checking agent combining fast Nemotron extraction with deep reasoning over live Tavily web evidence, featuring switchable inference providers (NVIDIA Build NIM and Nebius Token Factory).  
+**Live Demo (Render)**: [https://factcheck-radar.onrender.com](https://factcheck-radar.onrender.com)  
 **Demo Video (YouTube)**: [https://www.youtube.com/watch?v=s2DIYEr02RM](https://www.youtube.com/watch?v=s2DIYEr02RM)  
 **GitHub Repository**: [https://github.com/amansheikh-techie/FactCheck_Radar](https://github.com/amansheikh-techie/FactCheck_Radar)  
-**Deployment Truthfulness Notice**: The deployed live demo runs on **Render** (containerized via Docker) powered by the hosted **NVIDIA NIM API** (`https://integrate.api.nvidia.com/v1`) from `build.nvidia.com`. **Nebius Token Factory** is supported as a fully swappable inference provider (`LLM_PROVIDER=nebius`). We make no claim of deploying on Nebius Serverless Endpoints or AMD Genoa.
+**Deployment Truthfulness Notice**: The hosted live demo runs on **Render** (containerized via Docker) powered by the hosted **NVIDIA NIM API** (`https://integrate.api.nvidia.com/v1`) from `build.nvidia.com` using the high-speed `nvidia/nemotron-3.5-lightning-30b-a3b` model. **Nebius Token Factory** is an officially supported, fully swappable inference provider (`LLM_PROVIDER=nebius`) in the codebase, but has **not** been used for the hosted demo deployment. We do not claim that the hosted demo runs on Nebius Serverless Endpoints or AMD Genoa.
 
 ---
 
@@ -30,7 +31,7 @@ Paste a claim, a spicy headline, or an entire article URL. FactCheck Radar takes
 3. **Neutral Query Synthesis**: Generates balanced, unbiased search phrases designed to retrieve both supporting and debunking evidence without leading the search engine.
 4. **Live Evidence Retrieval**: Uses Tavily AI Search to pull relevant web evidence, automatically deduplicating across domains so one SEO-heavy site doesn't dominate the results.
 5. **Stance Analysis**: Classifies each source snippet as `supports`, `contradicts`, or `neutral` with a concrete one-sentence justification.
-6. **Deep Reasoning & Verdict**: Synthesizes the full evidence graph to assign an overall verdict (`True`, `Mostly True`, `Mixed`, `Mostly False`, `False`, `Unverifiable`), a calibrated confidence score (0–100%), and direct hyperlinked citations using Nemotron Ultra 550B (`nvidia/nemotron-3-ultra-550b-a55b`).
+6. **Deep Reasoning & Verdict**: Synthesizes the full evidence graph to assign an overall verdict (`True`, `Mostly True`, `Mixed`, `Mostly False`, `False`, `Unverifiable`), a calibrated confidence score (0–100%), and direct hyperlinked citations.
 7. **Real-Time Streaming**: Everything streams over Server-Sent Events (SSE) into a responsive UI with a live progress timeline, animated confidence gauge, and dark/light mode.
 8. **Rate Limiting & Quota Protection**: Enforces 10 requests/minute per IP sliding-window rate limits so the live demo cannot burn quotas.
 
@@ -39,20 +40,24 @@ Paste a claim, a spicy headline, or an entire article URL. FactCheck Radar takes
 ### How We Built It (Engineering Architecture)
 
 #### 1. Dual-Model Specialization with Switchable Providers
-Running a 550B model for every lightweight parsing step is expensive and introduces unnecessary latency. We decoupled the pipeline into specialized roles:
-- **Fast Agent**: Handles the high-speed work — atomic claim decomposition, search query crafting, and per-snippet stance classification (`nvidia/nemotron-3.5-lightning-30b-a3b` on NVIDIA; `nvidia/Nemotron-3-Nano-30B-A3B` on Nebius).
-- **Reasoning Agent (`nvidia/nemotron-3-ultra-550b-a55b`)**: Reserved strictly for the final synthesis step, weighing contradictory sources and calibrating uncertainty.
+The pipeline employs specialized Nemotron models for extraction, stance classification, and evidence synthesis.
 
 The architecture features a unified OpenAI-compatible client factory supporting:
-- **NVIDIA Build NIM** (`LLM_PROVIDER=nvidia`, active live demo): `https://integrate.api.nvidia.com/v1`
-- **Nebius Token Factory** (`LLM_PROVIDER=nebius`, supported provider): `https://api.tokenfactory.nebius.com/v1/`
+- **NVIDIA Build NIM** (`LLM_PROVIDER=nvidia`, active live demo): `https://integrate.api.nvidia.com/v1`, using `nvidia/nemotron-3.5-lightning-30b-a3b` for sub-30s responsive agentic cycles (with `nvidia/nemotron-3-ultra-550b-a55b` as fallback).
+- **Nebius Token Factory** (`LLM_PROVIDER=nebius`, supported provider): `https://api.tokenfactory.nebius.com/v1/`, routing to `nvidia/Nemotron-3-Nano-30B-A3B` and `nvidia/Nemotron-3-Ultra-550b-a55b`.
 
 At startup, the backend automatically validates credentials, calls `/models` for the active provider, logs discovered Nemotron model IDs, and resolves to the closest valid matching endpoints.
 
-#### 2. Full-Stack System
+#### 2. Switching to Nebius
+To switch the deployment to Nebius Token Factory:
+1. Set `LLM_PROVIDER=nebius` in `.env` or Render dashboard.
+2. Provide your `NEBIUS_API_KEY` (from `tokenfactory.nebius.com`).
+3. The server switches its base URL to `https://api.tokenfactory.nebius.com/v1/`, probes models, and runs the entire pipeline on Nebius infrastructure.
+
+#### 3. Full-Stack System
 - **Backend**: FastAPI (Python 3.11+) with async streaming endpoints, Pydantic v2 schemas for strict JSON validation, proxy-aware sliding-window IP rate limiting (10 req/min/IP), and an in-memory LRU cache with a 15-minute TTL.
 - **Frontend**: React 19 bootstrapped with Vite and styled using Tailwind CSS v4 (with class-based dark mode variants).
-- **Packaging**: Containerized multi-stage Docker build deployed on Render.
+- **Packaging**: Containerized multi-stage Docker build deployed on Render free tier.
 
 ---
 
@@ -60,7 +65,7 @@ At startup, the backend automatically validates credentials, calls `/models` for
 
 - **The Event Loop Trap**: Both the OpenAI and Tavily Python SDKs make blocking network calls under their standard synchronous clients. Under concurrent user traffic, this blocked FastAPI's async event loop. We wrapped all third-party SDK calls in `asyncio.to_thread` to ensure zero worker starvation.
 - **LLM Markdown Fencing & JSON Resiliency**: Even when setting `response_format={"type": "json_object"}`, models occasionally sneak in markdown fences (` ```json `) or extraneous text. We built a robust JSON extraction sanitizer (`_clean_json_str`) and a self-healing retry handler that re-prompts the model for an in-band correction.
-- **SSRF Hardening**: Accepting arbitrary URLs for article extraction is an open invitation for Server-Side Request Forgery. We wrote an `is_safe_url` validator that blocks loopback (`127.0.0.1`, `localhost`), link-local AWS/GCP metadata endpoints (`169.254.169.254`), and private RFC1918 subnets.
+- **Latency Optimization & Timeouts**: Heavy frontier models like 550B can take over 80 seconds. By deploying `nvidia/nemotron-3.5-lightning-30b-a3b` as the default for the live demo, full fact-check runs complete in 15-25 seconds with 35s per-request timeouts and helpful retry messages.
 - **Honesty in AI Results**: We eliminated silent fallbacks to sample data. If a live API call fails, the app explicitly displays an error banner and never masquerades canned data as live. Demonstration data only appears when the user explicitly enables Demo Mode.
 
 ---
@@ -68,8 +73,8 @@ At startup, the backend automatically validates credentials, calls `/models` for
 ### Accomplishments That We're Proud Of
 
 - **20/20 Passing Automated Unit Tests**: Complete test suite covering schemas, cache, rate limiting, fail-fast provider validation, and pipeline orchestration.
-- **Strict Live Smoke Test**: `scripts/smoke_test.py` validates live claim extraction, Tavily retrieval, source assessment, and 550B verdict synthesis end-to-end against the active provider, failing fast on any 401 or empty result.
-- **True Latency Optimization**: Sub-second extraction handoffs with the fast model, keeping the total fact-check cycle snappy despite deep web searches and 550B reasoning.
+- **Strict Live Smoke Test**: `scripts/smoke_test.py` validates live claim extraction, Tavily retrieval, source assessment, and verdict synthesis end-to-end against the active provider, failing fast on any 401 or empty result.
+- **True Latency Optimization**: Sub-second extraction handoffs with the fast model, keeping the total fact-check cycle snappy despite deep web searches.
 
 ---
 
@@ -79,7 +84,7 @@ At startup, the backend automatically validates credentials, calls `/models` for
 FactCheck Radar — Autonomous Real-Time Fact-Checking Agent powered by NVIDIA Nemotron with Switchable Providers
 
 ### Elevator Pitch
-An autonomous multi-agent verification system that takes any natural language claim, breaking news headline, or article URL, isolates atomic assertions using NVIDIA Nemotron Fast (30B), cross-references live web evidence via Tavily AI Search, and synthesizes an evidence-weighted verdict with calibrated confidence and verifiable citations using NVIDIA Nemotron Ultra (550B) with switchable support for NVIDIA Build NIM and Nebius Token Factory.
+An autonomous multi-agent verification system that takes any natural language claim, breaking news headline, or article URL, isolates atomic assertions using NVIDIA Nemotron Fast (30B), cross-references live web evidence via Tavily AI Search, and synthesizes an evidence-weighted verdict with calibrated confidence and verifiable citations using NVIDIA Nemotron with switchable support for NVIDIA Build NIM and Nebius Token Factory.
 
 ### What it does
 - **Multi-Modal Input**: Accepts direct claims, viral rumors, or full news article URLs (with automated extraction and SSRF defense).
@@ -91,8 +96,7 @@ An autonomous multi-agent verification system that takes any natural language cl
 - **Switchable Providers & Honesty**: Transparently reports provider and model IDs; never masks sample data as live.
 
 ### Built with
-- **LLM Reasoning**: NVIDIA Nemotron-3-Ultra-550b-a55b
-- **LLM Extraction & Stance**: NVIDIA Nemotron-3.5-Lightning-30b-a3b / Nemotron-3-Nano-30B
+- **LLM Models**: NVIDIA Nemotron-3.5-Lightning-30b-a3b / Nemotron-3-Ultra-550b
 - **Active Live Provider**: NVIDIA Build NIM (`https://integrate.api.nvidia.com/v1`)
 - **Supported Provider**: Nebius Token Factory (`https://api.tokenfactory.nebius.com/v1/`)
 - **Web Search Retrieval**: Tavily AI Search API

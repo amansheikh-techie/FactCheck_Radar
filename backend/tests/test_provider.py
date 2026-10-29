@@ -16,7 +16,7 @@ def test_is_placeholder():
     assert _is_placeholder("placeholder") is True
     assert _is_placeholder("<enter_key>") is True
     assert _is_placeholder("short") is True
-    assert _is_placeholder("nvapi-valid_key_123456789") is False
+    assert _is_placeholder("nvapi-dummy_test_key_sample") is False
 
 
 def test_provider_defaults_to_nvidia():

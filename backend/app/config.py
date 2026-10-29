@@ -39,12 +39,16 @@ class Settings(BaseSettings):
         description="Fast model for NVIDIA provider",
     )
     nvidia_model_reasoning: str = Field(
-        default="nvidia/nemotron-3-ultra-550b-a55b",
-        description="Reasoning model for NVIDIA provider",
+        default="nvidia/nemotron-3.5-lightning-30b-a3b",
+        description="Reasoning model for NVIDIA provider (lightning-30b for sub-30s speed)",
     )
 
     # Tavily
     tavily_api_key: str = Field(default="", description="Tavily API key for web search")
+
+    # Timeouts
+    llm_request_timeout: float = Field(default=35.0, description="Per-request LLM timeout in seconds")
+    pipeline_timeout: float = Field(default=45.0, description="Total pipeline execution timeout in seconds")
 
     # Optional generic overrides across providers
     model_fast: str = Field(
@@ -76,6 +80,7 @@ class Settings(BaseSettings):
     )
     model_reasoning_fallbacks: list[str] = Field(
         default=[
+            "nvidia/nemotron-3.5-lightning-30b-a3b",
             "nvidia/nemotron-3-ultra-550b-a55b",
             "nvidia/Nemotron-3-Ultra-550b-a55b",
             "nvidia/nemotron-3.5-super-vl-120b-a12b",
